@@ -1,0 +1,46 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+	],
+	"settings": {
+		"cSpell.words": [
+			"aetherium",
+			"apidb",
+			"Apikey",
+			"Arborstone",
+			"Aspenwood",
+			"Blackgate",
+			"Blacktide",
+			"Borlis",
+			"bwmarrin",
+			"Darkhaven",
+			"Denravi",
+			"Devona's",
+			"discordgo",
+			"Dragonbrand",
+			"Drakkar",
+			"Dzagonur",
+			"Ehmry",
+			"Elona",
+			"Eredon",
+			"Gandara",
+			"glic",
+			"goraml",
+			"Janthir",
+			"Kaineng",
+			"Kodash",
+			"Maguuma",
+			"Piken",
+			"Ranik",
+			"Shiverpeaks",
+			"Stormbluff",
+			"Surmia",
+			"Vabbi",
+			"vennekilde",
+			"Vizunah",
+			"Whiteside"
+		]
+	},
+}
