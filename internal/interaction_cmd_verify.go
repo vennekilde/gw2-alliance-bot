@@ -127,7 +127,11 @@ func (c *Interactions) registerInteractionVerify() {
 							},
 						})
 					// Ensure user is in the verified group
-					c.guildRoleHandler.AddVerificationRole(event.GuildID, user.ID)
+					err = c.guildRoleHandler.AddVerificationRole(event.GuildID, user.ID)
+					if err != nil {
+						c.onError(s, event, err)
+						return
+					}
 				}
 
 				_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{

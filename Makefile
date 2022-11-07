@@ -18,3 +18,6 @@ build_linux: build
 
 package:
 	docker build . -t vennekilde/gw2-alliance-bot
+
+scan:
+	gosec ./...

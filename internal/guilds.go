@@ -136,7 +136,8 @@ func (g *GuildRoleHandler) SetGuildRole(guildID string, userID string, roleID st
 
 		role := serverCache.roles[memberRoleID]
 		if role != nil && roleNameMatcher.MatchString(role.Name) {
-			g.discord.GuildMemberRoleRemove(guildID, userID, memberRoleID)
+			err := g.discord.GuildMemberRoleRemove(guildID, userID, memberRoleID)
+			zap.L().Error("unable to remove role from member", zap.String("guildID", guildID), zap.String("userID", userID), zap.Error(err))
 		}
 	}
 

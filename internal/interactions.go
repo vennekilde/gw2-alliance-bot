@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// #nosec G101 - not passwords
 const (
 	InteractionIDModalAPIKey = "modal-api-key"
 	InteractionIDSetAPIKey   = "set-api-key"
@@ -92,12 +93,16 @@ func (c *Interactions) onCommand(s *discordgo.Session, event *discordgo.Interact
 		}
 	}()
 
-	s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
+	err := s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Flags: discordgo.MessageFlagsEphemeral,
 		},
 	})
+	if err != nil {
+		c.onError(s, event, err)
+		return
+	}
 
 	zap.L().Info("received command",
 		zap.String("command", event.ApplicationCommandData().Name),
@@ -164,12 +169,16 @@ func (c *Interactions) onMessageComponent(s *discordgo.Session, event *discordgo
 }
 
 func (c *Interactions) onModalSubmit(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
-	s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
+	err := s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Flags: discordgo.MessageFlagsEphemeral,
 		},
 	})
+	if err != nil {
+		c.onError(s, event, err)
+		return
+	}
 
 	id := event.ModalSubmitData().CustomID
 	// Handle panics

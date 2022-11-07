@@ -101,6 +101,6 @@ func (b *Bot) beginBackendSync() {
 	}
 }
 
-func (b *Bot) Close() {
-	b.discord.Close()
+func (b *Bot) Close() error {
+	return b.discord.Close()
 }

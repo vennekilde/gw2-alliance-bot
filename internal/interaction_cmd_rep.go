@@ -117,12 +117,15 @@ func (c *Interactions) onSetRole(s *discordgo.Session, event *discordgo.Interact
 	roleID := parts[1]
 	roleName := parts[2]
 
-	s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
+	err := s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
 			Flags: discordgo.MessageFlagsEphemeral,
 		},
 	})
+	if err != nil {
+		zap.L().Error("unable to respond to interaction", zap.Any("session", s), zap.Any("event", event), zap.Error(err))
+	}
 
 	c.setRole(s, event, user, roleID, roleName)
 }

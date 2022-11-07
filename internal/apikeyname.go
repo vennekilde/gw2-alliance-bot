@@ -1,7 +1,7 @@
 package internal
 
 import (
-	"crypto/md5"
+	"crypto/md5" // #nosec G501 - md5 not used for cryptography
 	"encoding/hex"
 	"strconv"
 	"strings"
@@ -25,6 +25,7 @@ func GetAPIKeyName(worldPerspective int, serviceID int, serviceUserID string) st
 // GetAPIKeyCode creates a 16 character MD5 hash based on the serviceUserID
 // The hash doesn't need to be secure, so don't worry about it being MD5
 func GetAPIKeyCode(serviceID int, serviceUserID string) string {
+	// #nosec G401 - md5 not used for cryptography
 	md5Hasher := md5.New()
 	md5Hasher.Write([]byte(salt + serviceUserID))
 	name := strings.ToUpper(hex.EncodeToString(md5Hasher.Sum(nil))[0:16])
