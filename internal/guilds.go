@@ -29,13 +29,6 @@ func newGuildRoleHandler(discord *discordgo.Session, cache *Cache, guilds *Guild
 }
 
 func (g *GuildRoleHandler) checkRoles(guild *discordgo.Guild, member *discordgo.Member, status *types.VerificationStatus) {
-	// Skip if not verified for now
-	// TODO remove when enough are verified
-	if status.Status == types.EnumVerificationStatusStatusACCESS_DENIED_ACCOUNT_NOT_LINKED ||
-		status.Status == types.EnumVerificationStatusStatusACCESS_DENIED_EXPIRED {
-		return
-	}
-
 	gw2Guilds := g.guilds.GetGuildInfo(status.AccountData.Guilds)
 	verificationRole := g.identifyVerificationRole(guild.ID)
 	serverCache := g.cache.servers[guild.ID]
@@ -72,11 +65,10 @@ func (g *GuildRoleHandler) checkRoles(guild *discordgo.Guild, member *discordgo.
 				}
 			}
 			if !isAllowedRole {
-				zap.L().Warn("wanted to remove role from member", zap.String("role", role.Name), zap.Any("member", member))
-				/*err := g.discord.GuildMemberRoleRemove(guild.ID, member.User.ID, roleID)
+				err := g.discord.GuildMemberRoleRemove(guild.ID, member.User.ID, roleID)
 				if err != nil {
 					zap.L().Warn("unable to remove role from member", zap.String("roleID", roleID), zap.Any("member", member), zap.Error(err))
-				}*/
+				}
 			}
 		}
 	}
@@ -91,11 +83,10 @@ func (g *GuildRoleHandler) checkRoles(guild *discordgo.Guild, member *discordgo.
 
 	if !isVerified && hasVerifiedRole {
 		// Remove verified role, if user was not verified above
-		zap.L().Warn("wanted to remove role from member", zap.String("role", verificationRole.Name), zap.Any("member", member))
-		/*err := g.discord.GuildMemberRoleRemove(guild.ID, member.User.ID, verificationRole.ID)
+		err := g.discord.GuildMemberRoleRemove(guild.ID, member.User.ID, verificationRole.ID)
 		if err != nil {
 			zap.L().Warn("unable to remove role from member", zap.Any("role", verificationRole), zap.Any("member", member), zap.Error(err))
-		}*/
+		}
 	} else if isVerified && !hasVerifiedRole {
 		// Add verified role, if user is verified, but does not have it
 		err := g.discord.GuildMemberRoleAdd(guild.ID, member.User.ID, verificationRole.ID)
@@ -177,8 +168,8 @@ func newGuilds() *Guilds {
 }
 
 func (g *Guilds) GetGuildInfo(guildIds []string) []*Guild {
-	guilds := make([]*Guild, len(guildIds))
-	for i, id := range guildIds {
+	guilds := make([]*Guild, 0, len(guildIds))
+	for _, id := range guildIds {
 		guild, ok := g.cache[id]
 		if !ok {
 			guild = &Guild{}
@@ -189,7 +180,7 @@ func (g *Guilds) GetGuildInfo(guildIds []string) []*Guild {
 			}
 			g.cache[id] = guild
 		}
-		guilds[i] = guild
+		guilds = append(guilds, guild)
 	}
 
 	return guilds
