@@ -84,13 +84,26 @@ func (b *Bot) beginBackendSync() {
 					zap.L().Error("unable to fetch guild members from server", zap.String("guild id", guild.ID), zap.String("guild name", guild.Name), zap.Error(err))
 				}
 				for _, member := range members {
+					time.Sleep(time.Second * 5)
+
 					lastMemberID = member.User.ID
 					status, _, err := b.backend.V1.V1UsersService_idService_user_idVerificationStatusGet(member.User.ID, serviceID, map[string]interface{}{}, map[string]interface{}{})
 					if err != nil {
 						zap.L().Error("unable to get verification status for member", zap.Any("member", member), zap.Error(err))
+						continue
 					}
+
 					b.interactions.guildRoleHandler.checkRoles(guild, member, &status)
-					time.Sleep(time.Second * 5)
+
+					accName := status.AccountData.Name
+					if accName != "" {
+						// Cache guildID in member struct, as it is not by default
+						member.GuildID = guild.ID
+						err := setAccAsNick(b.discord, member, accName)
+						if err != nil {
+							zap.L().Error("unable to set nick name", zap.Any("member", member), zap.Error(err))
+						}
+					}
 				}
 				// Check if we should fetch more members
 				if len(members) == 0 || len(members) < limit {
