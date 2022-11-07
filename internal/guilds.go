@@ -111,7 +111,7 @@ func (g *GuildRoleHandler) AddVerificationRole(guildID string, userID string) er
 func (g *GuildRoleHandler) identifyVerificationRole(guildID string) *discordgo.Role {
 	serverCache := g.cache.servers[guildID]
 	for _, role := range serverCache.roles {
-		if role.Name == "API Verified" {
+		if role.Name == "Verified" {
 			return role
 		}
 	}

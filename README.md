@@ -7,7 +7,7 @@ Utilizes the [gw2verify](https://github.com/vennekilde/gw2verify) backend, origi
 ## How it works
 
 Currently, it works by looking for roles named [<GUILD_TAG>] <GUILD_NAME> and allows the user to join the role, if they are a member of the guild in the role.
-Additionally, if the user is able to join any guild role on the server, the bot will also try and assign the role "API Verified", in order to make permission management centralized.
+Additionally, if the user is able to join any guild role on the server, the bot will also try and assign the role "Verified", in order to make permission management centralized.
 
 In the future, these should be converted to managed roles by the bot and created by the menu to be provided when typing /setup
 
