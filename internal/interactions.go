@@ -9,8 +9,6 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
-	"github.com/vennekilde/gw2-alliance-bot/internal/api/goraml"
-	"github.com/vennekilde/gw2-alliance-bot/internal/api/types"
 	"go.uber.org/zap"
 )
 
@@ -31,21 +29,28 @@ type Command struct {
 type Interactions struct {
 	discord          *discordgo.Session
 	cache            *Cache
-	backend          *api.GuildWars2VerificationAPI
+	backend          *api.ClientWithResponses
 	guilds           *Guilds
 	guildRoleHandler *GuildRoleHandler
 	commands         map[string]*Command
 	interactions     map[string]InteractionHandler
+	ui               *UIBuilder
+
+	activeForUser func(userID string) bool
 }
 
-func newInteractions(discord *discordgo.Session, cache *Cache, backend *api.GuildWars2VerificationAPI) *Interactions {
+func newInteractions(discord *discordgo.Session, cache *Cache, backend *api.ClientWithResponses, activeForUser func(userID string) bool) *Interactions {
 	c := &Interactions{
-		discord:      discord,
-		cache:        cache,
-		commands:     make(map[string]*Command),
-		interactions: make(map[string]InteractionHandler),
-		backend:      backend,
-		guilds:       newGuilds(),
+		discord:       discord,
+		cache:         cache,
+		commands:      make(map[string]*Command),
+		interactions:  make(map[string]InteractionHandler),
+		backend:       backend,
+		guilds:        newGuilds(),
+		activeForUser: activeForUser,
+	}
+	c.ui = &UIBuilder{
+		guilds: c.guilds,
 	}
 	c.guildRoleHandler = newGuildRoleHandler(discord, cache, c.guilds)
 
@@ -59,6 +64,9 @@ func newInteractions(discord *discordgo.Session, cache *Cache, backend *api.Guil
 
 func (c *Interactions) onInteraction(s *discordgo.Session, event *discordgo.InteractionCreate) {
 	user := c.determineUser(event)
+	if !c.activeForUser(user.ID) {
+		return
+	}
 
 	switch event.Type {
 	case discordgo.InteractionPing:
@@ -256,11 +264,11 @@ func (c *Interactions) onError(s *discordgo.Session, event *discordgo.Interactio
 	zap.L().Error("error while executing command", zap.Error(err))
 
 	errStr := err.Error()
-	if apiErr, ok := err.(goraml.APIError); ok {
-		if typedErr, ok := apiErr.Message.(*types.Error); ok {
+	/*if apiErr, ok := err.(goraml.APIError); ok {
+		if typedErr, ok := apiErr.Message.(*api.Error); ok {
 			errStr = typedErr.SafeDisplayError
 		}
-	}
+	}*/
 
 	_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
 		Flags: discordgo.MessageFlagsEphemeral,
@@ -282,4 +290,36 @@ func (c *Interactions) onError(s *discordgo.Session, event *discordgo.Interactio
 	if err != nil {
 		zap.L().Error("unable to send error interaction response", zap.Error(err))
 	}
+}
+
+func (c *Interactions) resolveMembersFromApplicationCommandData(event *discordgo.InteractionCreate) map[string]*discordgo.Member {
+	var members map[string]*discordgo.Member
+	appComData := event.ApplicationCommandData()
+	if appComData.Resolved != nil {
+		members = appComData.Resolved.Members
+		for id, user := range appComData.Resolved.Users {
+			member := members[id]
+			if member != nil {
+				if member.User == nil {
+					member.User = user
+				}
+			} else {
+				members[id] = &discordgo.Member{
+					User: user,
+				}
+			}
+		}
+	} else {
+		user := c.determineUser(event)
+		member := event.Member
+		if member == nil {
+			member = &discordgo.Member{
+				User: user,
+			}
+		}
+		members = map[string]*discordgo.Member{
+			user.ID: member,
+		}
+	}
+	return members
 }

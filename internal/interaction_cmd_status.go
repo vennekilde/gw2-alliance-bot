@@ -1,11 +1,12 @@
 package internal
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/vennekilde/gw2-alliance-bot/internal/api/types"
+	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 )
 
 func (c *Interactions) registerInteractionStatus() {
@@ -34,106 +35,167 @@ func (c *Interactions) registerInteractionStatus() {
 
 }
 
-func (c *Interactions) onCommandStatus(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
-	var members map[string]*discordgo.Member
-	if event.ApplicationCommandData().Resolved != nil && event.ApplicationCommandData().Resolved.Members != nil {
-		members = event.ApplicationCommandData().Resolved.Members
+func authorFromInteraction(event *discordgo.InteractionCreate, member *discordgo.Member, memberID string) *discordgo.MessageEmbedAuthor {
+	var author discordgo.MessageEmbedAuthor
+	if member.Nick != "" {
+		author.Name = member.Nick
+		author.IconURL = member.AvatarURL("")
+	} else if member.User != nil {
+		author.Name = member.User.Username
+		author.IconURL = member.User.AvatarURL("")
 	} else {
-		members = map[string]*discordgo.Member{
-			user.ID: event.Member,
-		}
+		user := event.ApplicationCommandData().Resolved.Users[memberID]
+		author.Name = user.Username
+		author.IconURL = user.AvatarURL("")
 	}
 
+	return &author
+}
+
+func (c *Interactions) onCommandStatus(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	if !c.activeForUser(user.ID) {
+		return
+	}
+
+	members := c.resolveMembersFromApplicationCommandData(event)
 	for memberID, member := range members {
-		status, _, err := c.backend.V1.V1UsersService_idService_user_idVerificationStatusGet(memberID, serviceID, map[string]interface{}{}, map[string]interface{}{})
+		ctx := context.Background()
+		resp, err := c.backend.GetPlatformUserWithResponse(ctx, platformID, memberID, &api.GetPlatformUserParams{})
 		if err != nil {
 			c.onError(s, event, err)
 			return
 		}
-
-		var memberName string
-		if member.Nick != "" {
-			memberName = member.Nick
-		} else if member.User != nil {
-			memberName = member.User.Username
-		} else {
-			memberName = event.ApplicationCommandData().Resolved.Users[memberID].Username
-		}
-		fields := c.buildStatusFields(memberName, &status)
-
-		var statusDesc string
-		switch status.Status {
-		case types.EnumVerificationStatusStatusACCESS_DENIED_UNKNOWN:
-			statusDesc = "Unable to determine status"
-		case types.EnumVerificationStatusStatusACCESS_GRANTED_HOME_WORLD:
-			statusDesc = "Linked with Guild Wars 2 account"
-		case types.EnumVerificationStatusStatusACCESS_GRANTED_LINKED_WORLD:
-			statusDesc = "Linked with Guild Wars 2 account"
-		case types.EnumVerificationStatusStatusACCESS_GRANTED_HOME_WORLD_TEMPORARY:
-			statusDesc = "Linked with Guild Wars 2 account"
-		case types.EnumVerificationStatusStatusACCESS_GRANTED_LINKED_WORLD_TEMPORARY:
-			statusDesc = "Linked with Guild Wars 2 account"
-		case types.EnumVerificationStatusStatusACCESS_DENIED_INVALID_WORLD:
-			statusDesc = "Linked with Guild Wars 2 account"
-		case types.EnumVerificationStatusStatusACCESS_DENIED_REQUIREMENT_NOT_MET:
-			statusDesc = "Linked with Guild Wars 2 account"
-		case types.EnumVerificationStatusStatusACCESS_DENIED_ACCOUNT_NOT_LINKED:
-			statusDesc = "Not linked with Guild Wars 2 account!\nType /verify to link with your Guild Wars 2 account"
-		case types.EnumVerificationStatusStatusACCESS_DENIED_EXPIRED:
-			statusDesc = "Not linked with Guild Wars 2 account!\nType /verify to link with your Guild Wars 2 account"
-		case types.EnumVerificationStatusStatusACCESS_DENIED_BANNED:
-			statusDesc = "Banned!\nYour Guild Wars 2 account has been blacklisted from being used with this bot"
-		}
-
-		_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-			Flags: discordgo.MessageFlagsEphemeral,
-			Embeds: []*discordgo.MessageEmbed{
-				{
-					Color:       0x3498DB, // blue
-					Title:       "Verification Status",
-					Description: statusDesc,
-					Fields:      fields,
-				},
-			},
-		})
-		if err != nil {
-			c.onError(s, event, err)
-		}
+		user := resp.JSON200
+		c.sendFollowupStatusMessage(s, event, memberID, member, user)
 	}
 }
 
-func (c *Interactions) buildStatusFields(memberName string, status *types.VerificationStatus) []*discordgo.MessageEmbedField {
-	guilds := c.guilds.GetGuildInfo(status.AccountData.Guilds)
-	guildNames := make([]string, len(guilds))
-	for i, guild := range guilds {
-		guildNames[i] = fmt.Sprintf("[%s] %s", guild.Tag, guild.Name)
-	}
+func (c *Interactions) sendFollowupStatusMessage(s *discordgo.Session, event *discordgo.InteractionCreate, memberID string, member *discordgo.Member, user *api.User) {
+	author := authorFromInteraction(event, member, memberID)
 
-	fields := []*discordgo.MessageEmbedField{
+	accountTableFields := c.ui.buildStatusFields(user)
+
+	activeBan := api.ActiveBan(user.Bans)
+	expired := len(user.Accounts) == 0
+	embeds := []*discordgo.MessageEmbed{
 		{
-			Name:  "Discord",
-			Value: memberName,
+			Color:       linkStatusColor(&expired, nil, activeBan != nil, 0x57F287, 0xED4245, 0x95A5A6), // green, red, lightgrey
+			Title:       "Overview",
+			Description: "Accounts linked with your discord user",
+			Fields:      accountTableFields,
+			Author:      author,
 		},
 	}
-	if status.AccountData.ID != "" {
-		fields = append(fields,
-			&discordgo.MessageEmbedField{
-				Name:  "Account Name",
-				Value: status.AccountData.Name,
-			},
-			&discordgo.MessageEmbedField{
-				Name:  "World",
-				Value: WorldNames[status.AccountData.World].Name,
-			},
-		)
-		if len(status.AccountData.Guilds) > 0 {
-			fields = append(fields,
+
+	_, err := s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
+		Flags:  discordgo.MessageFlagsEphemeral,
+		Embeds: embeds,
+	})
+	if err != nil {
+		c.onError(s, event, err)
+	}
+}
+
+func (c *Interactions) buildAccountEmbeds(accounts []api.Account, bans []api.Ban) []*discordgo.MessageEmbed {
+	activeBan := api.ActiveBan(bans)
+
+	embeds := []*discordgo.MessageEmbed{}
+	for _, account := range accounts {
+		embed := c.buildAccountEmbed(account, activeBan != nil)
+		embeds = append(embeds, embed)
+	}
+
+	return embeds
+}
+
+func (c *Interactions) buildAccountEmbed(account api.Account, banned bool) *discordgo.MessageEmbed {
+	fields := c.buildStatusFields(&account)
+
+	embed := discordgo.MessageEmbed{
+		Color:       linkStatusColor(account.Expired, nil, banned, 0x3498DB, 0xED4245, 0x95A5A6), // blue, red, lightgrey
+		Description: linkStatus(account.Expired, nil, banned),
+		Fields:      fields,
+	}
+
+	if account.Name != "" {
+		embed.Title = account.Name
+	} else {
+		embed.Title = embed.Description
+		embed.Description = ""
+	}
+
+	/*if status.World != nil {
+		embed.Author = &discordgo.MessageEmbedAuthor{
+			Name: WorldNames[*status.World].Name,
+		}
+	}*/
+
+	return &embed
+}
+
+func (c *Interactions) buildOverviewStatusFields(accounts []api.Account) []*discordgo.MessageEmbedField {
+	fields := []*discordgo.MessageEmbedField{}
+
+	for _, account := range accounts {
+		fields = append(fields, c.buildStatusFields(&account)...)
+	}
+
+	return fields
+}
+
+func (c *Interactions) buildStatusFields(account *api.Account) []*discordgo.MessageEmbedField {
+	fields := []*discordgo.MessageEmbedField{}
+	if account != nil {
+		guilds := c.guilds.GetGuildInfo(account.Guilds)
+		guildNames := make([]string, len(guilds))
+		for i, guild := range guilds {
+			guildNames[i] = fmt.Sprintf("[%s] %s", guild.Tag, guild.Name)
+		}
+
+		if account.Id != "" {
+			/*fields = append(fields,
 				&discordgo.MessageEmbedField{
-					Name:  "Guilds",
-					Value: strings.Join(guildNames, "\n"),
+					Name:  "Account Name",
+					Value: status.Account.Name,
 				},
-			)
+			)*/
+
+			if len(guildNames) > 0 {
+				fields = append(fields,
+					&discordgo.MessageEmbedField{
+						Name:   "Guilds",
+						Value:  strings.Join(guildNames, "\n"),
+						Inline: true,
+					},
+				)
+			}
 		}
 	}
+
+	if account.World != 0 {
+		fields = append(fields,
+			&discordgo.MessageEmbedField{
+				Name:  "World",
+				Value: WorldNames[account.World].Name,
+			},
+		)
+	}
+
+	/*if status.Expires != nil {
+		var untilStr string
+		until := time.Until(*status.Expires)
+		if until.Hours() > 24 {
+			untilStr = fmt.Sprintf("%d days", int(until.Hours()/24))
+		} else {
+			untilStr = until.String()
+		}
+		fields = append(fields,
+			&discordgo.MessageEmbedField{
+				Name:  "Expires",
+				Value: untilStr,
+			},
+		)
+	}*/
+
 	return fields
 }

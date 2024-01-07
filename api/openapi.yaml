@@ -1,0 +1,841 @@
+openapi: 3.0.0
+info:
+  title: Guild Wars 2 Verification API
+  version: v1
+servers:
+  - url: https://api.farshiverpeaks.com
+  
+paths:
+  /v1/configuration:
+    parameters:
+      - $ref: '#/components/parameters/trait_world_view_optional'
+    get:
+      description: Get a configuration containing relevant information for running a service bot
+      operationId: Get_v1-configuration
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Configuration'
+        '400':
+          $ref: '#/components/responses/trait_world_oriented_400'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+
+  /v1/channels/{platform_id}/{channel}/statistics:
+    parameters:
+      - name: channel
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/platform_id'
+      - $ref: '#/components/parameters/trait_world_view'
+        required: true
+    post:
+      description: Collect statistics based on the provided parameters and save them for historical purposes
+      operationId: PostChannelPlatformStatistics
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelMetadata'
+        required: true
+      responses:
+        '200':
+          description: ''
+        '400':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+
+  /v1/platform/{platform_id}/users/updates:
+    parameters:
+      - $ref: '#/components/parameters/platform_id'
+      - $ref: '#/components/parameters/trait_world_view'
+    get:
+      tags:
+        - users
+      description: Long polling rest endpoint for receiving user updates
+      operationId: GetPlatformUserUpdates
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/trait_world_oriented_400'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '408':
+          description: Long polling timeout, no events available during request period
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+
+  /v1/platform/{platform_id}/users/{platform_user_id}/ban:
+    parameters:
+      - $ref: '#/components/parameters/platform_id'
+      - $ref: '#/components/parameters/platform_user_id'
+    put:
+      description: Ban a user's gw2 account from being verified
+      operationId: PutPlatformUserBan
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Ban'
+        required: true
+      responses:
+        '200':
+          description: ''
+        '400':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+
+  /v1/platform/{platform_id}/users/{platform_user_id}/apikey:
+    parameters:
+      - $ref: '#/components/parameters/platform_id'
+      - $ref: '#/components/parameters/platform_user_id'
+      - $ref: '#/components/parameters/trait_world_view_optional'
+    put:
+      responses:
+        '200':
+          description: ''
+        '400':
+          $ref: '#/components/responses/trait_world_oriented_400'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+      description: Set a platform user's API key
+      operationId: PutPlatformUserAPIKey
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIKeyData'
+        required: true
+      parameters:
+        - name: skip-requirements
+          in: query
+          required: false
+          description: Skip the variuse apikey requirements that might be in place
+          schema:
+            type: boolean
+
+  /v1/platform/{platform_id}/users/{platform_user_id}/apikey/name:
+    parameters:
+      - $ref: '#/components/parameters/platform_id'
+      - $ref: '#/components/parameters/platform_user_id'
+      - $ref: '#/components/parameters/trait_world_view_optional'
+    get:
+      description: Get a platform user's apikey name they are required to use if apikey name restriction is enforced
+      operationId: GetPlatformUserAPIKeyName
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKeyName'
+        '400':
+          $ref: '#/components/responses/trait_world_oriented_400'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+        
+  /v1/platform/{platform_id}/users/{platform_user_id}:
+    parameters:
+      - $ref: '#/components/parameters/platform_id'
+      - $ref: '#/components/parameters/platform_user_id'
+      - $ref: '#/components/parameters/trait_platform_user_display_name'
+    get:
+      description: Get a platform user's details
+      operationId: GetPlatformUser
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/trait_world_oriented_400'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+
+  /v1/platform/{platform_id}/users/{platform_user_id}/refresh:
+    parameters:
+      - $ref: '#/components/parameters/platform_id'
+      - $ref: '#/components/parameters/platform_user_id'
+    post:
+      description: Forces a refresh of the API data and returns the new user data after the API data has been refreshed. Note this can take a few seconds
+      operationId: PostPlatformUserRefresh
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+
+  /v1/verification/platform/{platform_id}/users/updates:
+    parameters:
+      - $ref: '#/components/parameters/platform_id'
+      - $ref: '#/components/parameters/trait_world_view'
+    get:
+      tags:
+        - users
+      description: Long polling rest endpoint for receiving verification updates
+      operationId: GetVerificationPlatformUserUpdates
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationStatus'
+        '400':
+          $ref: '#/components/responses/trait_world_oriented_400'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '408':
+          description: Long polling timeout, no events available during request period
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+
+  /v1/verification/platform/{platform_id}/users/{platform_user_id}/refresh:
+    parameters:
+      - $ref: '#/components/parameters/platform_id'
+      - $ref: '#/components/parameters/platform_user_id'
+      - $ref: '#/components/parameters/trait_world_view'
+    post:
+      description: Forces a refresh of the API data and returns the new verification status after the API data has been refreshed. Note this can take a few seconds
+      operationId: PostVerificationPlatformUserRefresh
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VerificationStatus'
+        '400':
+          $ref: '#/components/responses/trait_world_oriented_400'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+
+  /v1/verification/platform/{platform_id}/users/{platform_user_id}:
+    parameters:
+      - $ref: '#/components/parameters/platform_id'
+      - $ref: '#/components/parameters/platform_user_id'
+      - $ref: '#/components/parameters/trait_world_view'
+      - $ref: '#/components/parameters/trait_platform_user_display_name'
+    get:
+      description: Get a users verification status
+      operationId: GetVerificationPlatformUserStatus
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationStatus'
+        '400':
+          $ref: '#/components/responses/trait_world_oriented_400'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+
+  /v1/verification/platform/{platform_id}/users/{platform_user_id}/temporary:
+    parameters:
+      - $ref: '#/components/parameters/platform_id'
+      - $ref: '#/components/parameters/platform_user_id'
+      - $ref: '#/components/parameters/trait_world_view'
+    put:
+      description: Grant a user temporary world relation. Additionally, the "temp_expired" property will be removed from the user's properties
+      operationId: PutVerificationPlatformUserTemporary
+      responses:
+        '200':
+          description: expires after given amount of seconds
+          content:
+            application/json:
+              schema:
+                type: integer
+        '400':
+          $ref: '#/components/responses/trait_world_oriented_400'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EphemeralAssociation'
+        required: true
+
+  /v1/services/{service_uuid}/properties:
+    parameters:
+      - $ref: '#/components/parameters/service_uuid'
+    get:
+      description: Get all service properties
+      operationId: GetServiceProperties
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Property'
+        '400':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+
+  /v1/services/{service_uuid}/properties/{subject}:
+    parameters:
+      - $ref: '#/components/parameters/service_uuid'
+      - $ref: '#/components/parameters/subject'
+    get:
+      description: Get a subject's properties
+      operationId: GetServiceSubjectProperties
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Property'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '404':
+          description: User does not have the requested property
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+    put:
+      description: Set a subject's properties
+      operationId: PutServiceSubjectProperties
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Property'
+        '400':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+
+  /v1/services/{service_uuid}/properties/{subject}/{property_name}:
+    parameters:
+      - $ref: '#/components/parameters/service_uuid'
+      - $ref: '#/components/parameters/subject'
+      - $ref: '#/components/parameters/property_name'
+    get:
+      description: Get a subject's property
+      operationId: GetServiceSubjectProperty
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Property'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '404':
+          description: User does not have the requested property
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+    put:
+      description: Set a subject's property
+      operationId: PutServiceSubjectProperty
+      responses:
+        '200':
+          description: ''
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+
+  /v1/guilds/{guild_ident}/users:
+    parameters:
+      - $ref: '#/components/parameters/guild_ident'
+    get:
+      description: Grant a user temporary world relation. Additionally, the "temp_expired" property will be removed from the user's properties
+      operationId: GetGuildUsers
+      responses:
+        '200':
+          description: list of verified users in the guild
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/trait_world_oriented_400'
+        '403':
+          $ref: '#/components/responses/trait_secured_403'
+        '500':
+          $ref: '#/components/responses/trait_error_resp'
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        safe-display-error:
+          type: string
+      required:
+        - error
+        - safe-display-error
+    Ban:
+      type: object
+      required:
+        - user_id
+        - until
+        - reason
+      properties:
+        until:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        user_id:
+          type: integer
+          format: int64
+          x-go-name: UserID
+    Property:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+      required:
+        - name
+        - value
+    AccessType:
+      enum:
+        - HOME_WORLD
+        - LINKED_WORLD
+      type: string
+      x-oapi-codegen-extra-tags:
+        bun: "-"
+    Configuration:
+      type: object
+      properties:
+        expiration_time:
+          type: integer
+        temporary_access_expiration_time:
+          type: integer
+        world_links:
+          description: List of worlds links
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/WorldLinks'
+      required:
+        - expiration_time
+        - temporary_access_expiration_time
+        - world_links
+    WorldLinks:
+      type: array
+      items:
+        type: integer
+
+    Status:
+      type: string
+      enum:
+        - ACCESS_DENIED_UNKNOWN
+        - ACCESS_GRANTED_HOME_WORLD
+        - ACCESS_GRANTED_LINKED_WORLD
+        - ACCESS_GRANTED_HOME_WORLD_TEMPORARY
+        - ACCESS_GRANTED_LINKED_WORLD_TEMPORARY
+        - ACCESS_DENIED_ACCOUNT_NOT_LINKED
+        - ACCESS_DENIED_EXPIRED
+        - ACCESS_DENIED_INVALID_WORLD
+        - ACCESS_DENIED_BANNED
+        - ACCESS_DENIED_REQUIREMENT_NOT_MET
+      x-oapi-codegen-extra-tags:
+        bun: '-'
+    VerificationStatus:
+      type: object
+      required:
+        - status
+      properties:
+        platform_link:
+          $ref: '#/components/schemas/PlatformLink'
+        status:
+          $ref: '#/components/schemas/Status'
+        ban:
+          $ref: '#/components/schemas/Ban'
+
+    User:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: integer
+          format: int64
+          x-oapi-codegen-extra-tags:
+            bun: ",pk,autoincrement"
+        db_created:
+          type: string
+          format: date-time
+          x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            bun: ",nullzero,notnull,default:current_timestamp,scanonly"
+        db_updated:
+          type: string
+          format: date-time
+          x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            bun: ",nullzero,notnull,default:current_timestamp"
+        platform_links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformLink'
+          x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            bun: rel:has-many,join:id=user_id
+        accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
+          x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            bun: rel:has-many,join:id=user_id
+        bans:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ban'
+          x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            bun: rel:has-many,join:id=user_id
+        ephemeral_associations:
+          type: array
+          items:
+            $ref: '#/components/schemas/EphemeralAssociation'
+          x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            bun: rel:has-many,join:id=user_id
+
+    Account:
+      type: object
+      required:
+        - id
+        - name
+        - age
+        - world
+        - created
+        - commander
+        - user_id
+      properties:
+        db_created:
+          type: string
+          format: date-time
+          x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            bun: ",nullzero,notnull,default:current_timestamp,scanonly"
+        db_updated:
+          type: string
+          format: date-time
+          x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            bun: ",nullzero,notnull,default:current_timestamp"
+        id:
+          type: string
+        name:
+          type: string
+        world:
+          type: integer
+        age:
+          type: integer
+        guilds:
+          type: array
+          items:
+            type: string
+        guild_leader:
+          type: array
+          items:
+            type: string
+        access:
+          type: array
+          items:
+            type: string
+        created:
+          type: string
+          format: date-time
+        commander:
+          type: boolean
+        fractal_level:
+          type: integer
+        daily_ap:
+          type: integer
+        monthly_ap:
+          type: integer
+        wvw_rank:
+          type: integer
+          x-oapi-codegen-extra-tags:
+            # gw2api account struct is named WvWRank and bun therefor wants it to be named wv_w_rank in the column
+            bun: wv_w_rank
+        user_id:
+          type: integer
+          format: int64
+          x-go-name: UserID
+        world_status:
+          $ref: '#/components/schemas/Status'
+        expired:
+          type: boolean
+          x-oapi-codegen-extra-tags:
+            bun: '-'
+    PlatformLink:
+      type: object
+      required:
+        - platform_user_id
+        - platform_id
+        - primary
+        - user_id
+      properties:
+        platform_user_id:
+          type: string
+          x-go-name: PlatformUserID
+          x-oapi-codegen-extra-tags:
+            bun: ",pk"
+        platform_id:
+          description: ID of the platform the user id belongs to
+          type: integer
+          x-go-name: PlatformID
+          x-oapi-codegen-extra-tags:
+            bun: ",pk"
+        display_name:
+          type: string
+        primary: 
+          default: true
+          type: boolean
+        user_id:
+          type: integer
+          format: int64
+          x-go-name: UserID
+        
+    EphemeralAssociation:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          format: int64
+          x-go-name: UserID
+          x-go-type-skip-optional-pointer: true
+        world:
+          type: integer
+        until: 
+          type: string
+          format: date-time
+        access_type:
+          $ref: '#/components/schemas/AccessType'
+
+    APIKeyData:
+      type: object
+      properties:
+        apikey:
+          description: The api to set for the user
+          type: string
+        primary:
+          description: Set if the user should be the primary user of that particular platform. There can only be one per platform per account. Setting a new primary user will override the old one
+          type: boolean
+      required:
+        - apikey
+        - primary
+
+    APIKeyName:
+      type: object
+      properties:
+        name:
+          description: The apikey name the user has to name their apikey if apikey name is enforced
+          type: string
+      required:
+        - name
+
+    ChannelMetadata:
+      type: object
+      properties:
+        name:
+          type: string
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelUserMetadata'
+      required:
+        - name
+        - users
+
+    ChannelUserMetadata:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        muted:
+          type: boolean
+        deafened:
+          type: boolean
+        streaming:
+          type: boolean
+      required:
+        - id
+        - name
+        - muted
+        - deafened
+        - streaming
+
+  responses:
+    trait_error_resp:
+      description: Endpoint was unable to complete your request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+        
+    trait_world_oriented_400:
+      description: Invalid world id provided
+    trait_secured_403:
+      description: Access token invalid
+
+  parameters:
+    platform_id:
+      name: platform_id
+      in: path
+      required: true
+      schema:
+        type: integer
+      description: 0 = Website, 1 = Teamspeak, 2 = Discord
+    platform_user_id:
+      name: platform_user_id
+      in: path
+      required: true
+      schema:
+        type: string
+    guild_ident:
+        name: guild_ident
+        description: UUID or name of guild
+        in: path
+        required: true
+        schema:
+          type: string
+    service_uuid:
+      name: service_uuid
+      in: path
+      required: true
+      description: unique id of the service
+      schema:
+        type: string
+    subject:
+      name: subject
+      in: path
+      required: true
+      schema:
+        type: string
+    property_name:
+      name: property_name
+      in: path
+      required: true
+      schema:
+        type: string
+    trait_world_view:
+      name: world
+      in: query
+      required: true
+      schema:
+        type: integer
+    trait_world_view_optional:
+      name: world
+      in: query
+      schema:
+        type: integer
+    trait_platform_user_display_name:
+      name: display_name
+      description: Display name of the user of the platform user. Will be stored as the latest used display name by that user
+      in: query
+      schema:
+        type: string
+    trait_secured_authentication:
+      name: Authentication
+      in: header
+      required: true
+      schema:
+        type: string
+  examples: {}
+  requestBodies: {}
+  headers: {}
+  securitySchemes:
+    bearerAuth:           
+      type: http
+      scheme: bearer
+      #bearerFormat: JWT 
+  links: {}
+  callbacks: {}
+security:
+  - bearerAuth: []

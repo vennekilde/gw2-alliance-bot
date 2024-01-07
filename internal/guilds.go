@@ -1,14 +1,12 @@
 package internal
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"regexp"
 
+	"github.com/MrGunflame/gw2api"
 	"github.com/bwmarrin/discordgo"
-	"github.com/vennekilde/gw2-alliance-bot/internal/api/types"
-	"github.com/vennekilde/gw2apidb/pkg/gw2api"
+	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 	"go.uber.org/zap"
 )
 
@@ -28,18 +26,23 @@ func newGuildRoleHandler(discord *discordgo.Session, cache *Cache, guilds *Guild
 	}
 }
 
-func (g *GuildRoleHandler) checkRoles(guild *discordgo.Guild, member *discordgo.Member, status *types.VerificationStatus) {
-	gw2Guilds := g.guilds.GetGuildInfo(status.AccountData.Guilds)
+func (g *GuildRoleHandler) checkRoles(guild *discordgo.Guild, member *discordgo.Member, accounts []api.Account) (serverGuildRoles []*discordgo.Role) {
 	verificationRole := g.identifyVerificationRole(guild.ID)
 	serverCache := g.cache.servers[guild.ID]
 
-	serverGuildRoles := make([]*discordgo.Role, 0, len(gw2Guilds))
-	for _, guild := range gw2Guilds {
-		var role *discordgo.Role
-		for _, role = range serverCache.roles {
-			if role.Name == fmt.Sprintf("[%s] %s", guild.Tag, guild.Name) {
-				serverGuildRoles = append(serverGuildRoles, role)
-				break
+	for _, account := range accounts {
+		if account.Guilds == nil {
+			continue
+		}
+
+		gw2Guilds := g.guilds.GetGuildInfo(account.Guilds)
+		for _, guild := range gw2Guilds {
+			var role *discordgo.Role
+			for _, role = range serverCache.roles {
+				if role.Name == fmt.Sprintf("[%s] %s", guild.Tag, guild.Name) {
+					serverGuildRoles = append(serverGuildRoles, role)
+					break
+				}
 			}
 		}
 	}
@@ -94,6 +97,8 @@ func (g *GuildRoleHandler) checkRoles(guild *discordgo.Guild, member *discordgo.
 			zap.L().Warn("unable to add role to member", zap.Any("role", verificationRole), zap.Any("member", member), zap.Error(err))
 		}
 	}
+
+	return serverGuildRoles
 }
 
 func (g *GuildRoleHandler) AddVerificationRole(guildID string, userID string) error {
@@ -137,7 +142,9 @@ func (g *GuildRoleHandler) SetGuildRole(guildID string, userID string, roleID st
 		role := serverCache.roles[memberRoleID]
 		if role != nil && roleNameMatcher.MatchString(role.Name) {
 			err := g.discord.GuildMemberRoleRemove(guildID, userID, memberRoleID)
-			zap.L().Error("unable to remove role from member", zap.String("guildID", guildID), zap.String("userID", userID), zap.Error(err))
+			if err != nil {
+				zap.L().Error("unable to remove role from member", zap.String("guildID", guildID), zap.String("userID", userID), zap.Error(err))
+			}
 		}
 	}
 
@@ -157,76 +164,39 @@ func (g *GuildRoleHandler) SetGuildRole(guildID string, userID string, roleID st
 }
 
 type Guilds struct {
-	gw2API *gw2api.GW2Api
-	cache  map[string]*Guild
+	gw2API *gw2api.Session
+	cache  map[string]*gw2api.Guild
 }
 
 func newGuilds() *Guilds {
 	return &Guilds{
-		cache:  make(map[string]*Guild),
-		gw2API: gw2api.NewGW2Api(),
+		cache:  make(map[string]*gw2api.Guild),
+		gw2API: gw2api.New(),
 	}
 }
 
-func (g *Guilds) GetGuildInfo(guildIds []string) []*Guild {
-	guilds := make([]*Guild, 0, len(guildIds))
-	for _, id := range guildIds {
+func (g *Guilds) GetGuildInfo(guildIds *[]string) []*gw2api.Guild {
+	if guildIds == nil {
+		return nil
+	}
+	guilds := make([]*gw2api.Guild, 0, len(*guildIds))
+	for _, id := range *guildIds {
 		guild, ok := g.cache[id]
 		if !ok {
-			guild = &Guild{}
-			err := g.fetchGuildInfo(id, guild)
+			// Fetch guild from gw2api
+			gw2ApiGuild, err := g.gw2API.Guild(id, false)
 			if err != nil {
 				zap.L().Warn("unable to fetch guild", zap.String("guild id", id), zap.Error(err))
 				continue
 			}
-			g.cache[id] = guild
+			g.cache[id] = &gw2ApiGuild
+			guild = &gw2ApiGuild
 		}
-		guilds = append(guilds, guild)
+
+		if guild != nil {
+			guilds = append(guilds, guild)
+		}
 	}
 
 	return guilds
-}
-
-// Guild
-type Guild struct {
-	ID        string      `json:"id"`
-	Name      string      `json:"name"`
-	Tag       string      `json:"tag"`
-	Level     int         `json:"level"`
-	MOTD      string      `json:"motd"`
-	Influence int         `json:"influence"`
-	Aetherium int         `json:"aetherium"`
-	Resonance int         `json:"resonance"`
-	Favor     int         `json:"favor"`
-	Emblem    GuildEmblem `json:"emblem"`
-}
-
-// GuildEmblem
-type GuildEmblem struct {
-	Background gw2api.EmblemLayers `json:"background"`
-	Foreground gw2api.EmblemLayers `json:"foreground"`
-	Flags      []string            `json:"flags"`
-}
-
-func (g *Guilds) fetchGuildInfo(id string, result *Guild) error {
-	resp, err := g.gw2API.Client.Get(fmt.Sprintf("https://api.guildwars2.com/v2/guild/%s", id))
-	if err != nil {
-		return err
-	}
-
-	var data []byte
-	if data, err = ioutil.ReadAll(resp.Body); err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
-
-	if err = json.Unmarshal(data, &result); err != nil {
-		var gwErr gw2api.APIError
-		if err = json.Unmarshal(data, &gwErr); err != nil {
-			return err
-		}
-		return fmt.Errorf("endpoint returned error: %v", gwErr)
-	}
-	return err
 }

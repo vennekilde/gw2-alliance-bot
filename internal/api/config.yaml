@@ -1,0 +1,10 @@
+# Generator config https://github.com/deepmap/oapi-codegen/tree/master#using-oapi-codegen
+package: api
+generate:
+  gin-server: false
+  client: true
+  models: true
+  embedded-spec: true
+output: api.gen.go
+output-options:
+  skip-prune: true

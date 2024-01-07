@@ -1,12 +1,13 @@
 package internal
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/vennekilde/gw2-alliance-bot/internal/api/types"
+	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 	"go.uber.org/zap"
 )
 
@@ -24,26 +25,52 @@ func (c *Interactions) registerInteractionRep() {
 }
 
 func (c *Interactions) onCommandRep(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	if !c.activeForUser(user.ID) {
+		return
+	}
+
+	ctx := context.Background()
 	if event.Member == nil {
 		c.onError(s, event, errors.New("this command can only be used inside a discord server channel"))
 		return
 	}
 
 	zap.L().Info("fetching status")
-	status, _, err := c.backend.V1.V1UsersService_idService_user_idVerificationStatusGet(user.ID, serviceID, map[string]interface{}{}, map[string]interface{}{})
+	status, err := c.backend.GetPlatformUserWithResponse(ctx, platformID, user.ID, &api.GetPlatformUserParams{})
 	if err != nil {
 		c.onError(s, event, err)
 		return
 	}
 
-	c.handleRepFromStatus(s, event, user, &status)
+	c.handleRepFromStatus(s, event, user, status.JSON200.Accounts)
 }
 
-func (c *Interactions) buildGuildComponents(guildID string, status *types.VerificationStatus) ([]discordgo.MessageComponent, *discordgo.Role) {
+func (c *Interactions) buildOverviewGuildComponents(guildID string, accounts []api.Account) (components []discordgo.MessageComponent, lastRole *discordgo.Role) {
+	if len(accounts) == 0 {
+		return components, lastRole
+	}
+
+	for _, account := range accounts {
+		comps, role := c.buildGuildComponents(guildID, &account)
+
+		if role != nil {
+			lastRole = role
+		}
+		components = append(components, comps...)
+	}
+
+	return components, lastRole
+}
+
+func (c *Interactions) buildGuildComponents(guildID string, account *api.Account) ([]discordgo.MessageComponent, *discordgo.Role) {
+	if account.Guilds == nil {
+		return nil, nil
+	}
+
 	roles := c.cache.servers[guildID].roles
 
 	zap.L().Info("fetching guilds")
-	guilds := c.guilds.GetGuildInfo(status.AccountData.Guilds)
+	guilds := c.guilds.GetGuildInfo(account.Guilds)
 	components := make([]discordgo.MessageComponent, 0, len(guilds))
 	var lastRole *discordgo.Role
 	for _, guild := range guilds {
@@ -64,16 +91,16 @@ func (c *Interactions) buildGuildComponents(guildID string, status *types.Verifi
 			// Style provides coloring of the button. There are not so many styles tho.
 			Style: discordgo.PrimaryButton,
 			// CustomID is a thing telling Discord which data to send when this button will be pressed.
-			CustomID: fmt.Sprintf("%s:%s:%s", InteractionIDSetRole, role.ID, role.Name),
+			CustomID: fmt.Sprintf("%s:%s:%s:%s", InteractionIDSetRole, guild.ID, role.ID, role.Name),
 		})
 	}
 
 	return components, lastRole
 }
 
-func (c *Interactions) handleRepFromStatus(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User, status *types.VerificationStatus) {
+func (c *Interactions) handleRepFromStatus(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User, accounts []api.Account) {
 	var err error
-	components, lastRole := c.buildGuildComponents(event.GuildID, status)
+	components, lastRole := c.buildOverviewGuildComponents(event.GuildID, accounts)
 
 	zap.L().Info("sending reply")
 	if len(components) == 1 {
@@ -113,9 +140,12 @@ func (c *Interactions) handleRepFromStatus(s *discordgo.Session, event *discordg
 }
 
 func (c *Interactions) onSetRole(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	ctx := context.Background()
+
 	parts := strings.Split(event.MessageComponentData().CustomID, ":")
-	roleID := parts[1]
-	roleName := parts[2]
+	guildID := parts[1]
+	roleID := parts[2]
+	roleName := parts[3]
 
 	err := s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
@@ -127,7 +157,29 @@ func (c *Interactions) onSetRole(s *discordgo.Session, event *discordgo.Interact
 		zap.L().Error("unable to respond to interaction", zap.Any("session", s), zap.Any("event", event), zap.Error(err))
 	}
 
-	c.setRole(s, event, user, roleID, roleName)
+	// Ensure user still has the guild
+	resp, err := c.backend.GetPlatformUserWithResponse(ctx, platformID, user.ID, &api.GetPlatformUserParams{})
+	if err != nil {
+		c.onError(s, event, err)
+		return
+	}
+
+	if resp.JSON200 != nil && resp.JSON200.Accounts != nil {
+		for _, account := range resp.JSON200.Accounts {
+			if account.Guilds == nil {
+				continue
+			}
+			for _, accGuildID := range *account.Guilds {
+				if accGuildID == guildID {
+					c.setRole(s, event, user, roleID, roleName)
+					return
+				}
+			}
+		}
+	}
+
+	// If we reach this, then we failed
+	c.onError(s, event, fmt.Errorf("unable to verify you are still elligble to represent %s", roleName))
 }
 
 func (c *Interactions) setRole(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User, roleID string, roleName string) {

@@ -1,13 +1,13 @@
 package internal
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
 
 	"github.com/bwmarrin/discordgo"
-	"github.com/vennekilde/gw2-alliance-bot/internal/api/goraml"
-	"github.com/vennekilde/gw2-alliance-bot/internal/api/types"
+	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 )
 
 var APIKeyErrorRegex = regexp.MustCompile(`(.*)(You need to name your api key ").*(" instead of.*)`)
@@ -23,6 +23,11 @@ func (c *Interactions) registerInteractionVerify() {
 			Description: "Verify with your Guild Wars 2 API Key",
 		},
 		handler: func(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+			if !c.activeForUser(user.ID) {
+				return
+			}
+
+			ctx := context.Background()
 			code := GetAPIKeyCode(2, user.ID)
 
 			var guild *discordgo.Guild
@@ -32,7 +37,7 @@ func (c *Interactions) registerInteractionVerify() {
 				}
 			}
 
-			status, _, err := c.backend.V1.V1UsersService_idService_user_idVerificationStatusGet(user.ID, serviceID, map[string]interface{}{}, map[string]interface{}{})
+			resp, err := c.backend.GetPlatformUserWithResponse(ctx, platformID, user.ID, &api.GetPlatformUserParams{})
 			if err != nil {
 				c.onError(s, event, err)
 			}
@@ -88,14 +93,21 @@ func (c *Interactions) registerInteractionVerify() {
 				c.onError(s, event, err)
 			}
 
-			if status.Status != types.EnumVerificationStatusStatusACCESS_DENIED_ACCOUNT_NOT_LINKED {
+			if resp.StatusCode() != 404 && resp.JSON200 != nil {
 				var memberName string
-				if event.Member.Nick != "" {
+				if event.Member != nil && event.Member.Nick != "" {
 					memberName = event.Member.Nick
 				} else {
-					memberName = event.Member.User.Username
+					memberName = user.Username
 				}
-				fields := c.buildStatusFields(memberName, &status)
+
+				fields := []*discordgo.MessageEmbedField{
+					{
+						Name:  "Discord",
+						Value: memberName,
+					},
+				}
+				fields = append(fields, c.ui.buildStatusFields(resp.JSON200)...)
 
 				embeds = []*discordgo.MessageEmbed{
 					{
@@ -113,35 +125,41 @@ func (c *Interactions) registerInteractionVerify() {
 					},
 				}
 
-				repComponents, _ := c.buildGuildComponents(event.GuildID, &status)
-				if len(repComponents) > 0 {
-					embeds = append(embeds,
-						&discordgo.MessageEmbed{
-							Title: "You can represent a guild on this server!",
-							Color: 0x3498DB, // blue
-							Fields: []*discordgo.MessageEmbedField{
-								{
-									Name:  `Your Guild Wars 2 account is in a guild represented on this server`,
-									Value: `Click on the guild you wish to represent below`,
+				var components []discordgo.MessageComponent
+				if event.Member != nil {
+					// Only invoked, if interaction happened inside a discord server
+					repComponents, _ := c.buildOverviewGuildComponents(event.GuildID, resp.JSON200.Accounts)
+					if len(repComponents) > 0 {
+						embeds = append(embeds,
+							&discordgo.MessageEmbed{
+								Title: "You can represent a guild on this server!",
+								Color: 0x3498DB, // blue
+								Fields: []*discordgo.MessageEmbedField{
+									{
+										Name:  `Your Guild Wars 2 account is in a guild represented on this server`,
+										Value: `Click on the guild you wish to represent below`,
+									},
 								},
+							})
+						// Ensure user is in the verified group
+						err = c.guildRoleHandler.AddVerificationRole(event.GuildID, user.ID)
+						if err != nil {
+							c.onError(s, event, err)
+							return
+						}
+
+						components = []discordgo.MessageComponent{
+							discordgo.ActionsRow{
+								Components: repComponents,
 							},
-						})
-					// Ensure user is in the verified group
-					err = c.guildRoleHandler.AddVerificationRole(event.GuildID, user.ID)
-					if err != nil {
-						c.onError(s, event, err)
-						return
+						}
 					}
 				}
 
 				_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-					Flags:  discordgo.MessageFlagsEphemeral,
-					Embeds: embeds,
-					Components: []discordgo.MessageComponent{
-						discordgo.ActionsRow{
-							Components: repComponents,
-						},
-					},
+					Flags:      discordgo.MessageFlagsEphemeral,
+					Embeds:     embeds,
+					Components: components,
 				})
 				if err != nil {
 					c.onError(s, event, err)
@@ -182,40 +200,35 @@ func (c *Interactions) openAPIKeyModal(s *discordgo.Session, event *discordgo.In
 }
 
 func (c *Interactions) setAPIKey(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	ctx := context.Background()
 	apiKey := event.ModalSubmitData().Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
-	body := types.APIKeyData{
+	body := api.APIKeyData{
 		Apikey:  apiKey,
 		Primary: true,
 	}
-	resp, err := c.backend.V1.V1UsersService_idService_user_idApikeyPut(user.ID, serviceID, body, map[string]interface{}{}, map[string]interface{}{})
+	resp, err := c.backend.PutPlatformUserAPIKeyWithResponse(ctx, platformID, user.ID, nil, body)
 	if err != nil {
-		if apiErr, ok := err.(goraml.APIError); ok {
-			if apiErr.Code != 200 {
-				if typedErr, ok := apiErr.Message.(*types.Error); ok {
-					// Quick fix for proper apikey name error
-					code := GetAPIKeyCode(2, user.ID)
-
-					var guild *discordgo.Guild
-					for _, guild = range c.discord.State.Guilds {
-						if guild.ID == event.GuildID {
-							break
-						}
-					}
-
-					typedErr.SafeDisplayError = APIKeyErrorRegex.ReplaceAllString(typedErr.SafeDisplayError, fmt.Sprintf("${1}\n${2}%s - %s${3}", guild.Name, code))
-				}
-				c.onError(s, event, apiErr)
-				return
-			}
-		} else {
-			c.onError(s, event, fmt.Errorf("error while executing command"))
-			return
-		}
+		c.onError(s, event, fmt.Errorf("error while executing command"))
+		return
 	}
 
-	switch resp.StatusCode {
+	switch resp.StatusCode() {
 	case 200:
 		// skip default handler
+	case 500:
+		// Quick fix for proper apikey name error
+		code := GetAPIKeyCode(2, user.ID)
+
+		var guild *discordgo.Guild
+		for _, guild = range c.discord.State.Guilds {
+			if guild.ID == event.GuildID {
+				break
+			}
+		}
+
+		apiErr := errors.New(APIKeyErrorRegex.ReplaceAllString(resp.JSON500.SafeDisplayError, fmt.Sprintf("${1}\n${2}%s - %s${3}", guild.Name, code)))
+		c.onError(s, event, apiErr)
+		return
 	default:
 		c.onError(s, event, errors.New("unable to set api key - reason unknown"))
 		return
