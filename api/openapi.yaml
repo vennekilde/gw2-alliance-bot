@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: Guild Wars 2 Verification API
-  version: v1
+  version: v2
 servers:
   - url: https://api.farshiverpeaks.com
   
