@@ -1,4 +1,4 @@
-package internal
+package interaction
 
 import (
 	"errors"
@@ -9,6 +9,10 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
+	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
+	"github.com/vennekilde/gw2-alliance-bot/internal/discord"
+	"github.com/vennekilde/gw2-alliance-bot/internal/guild"
+	"github.com/vennekilde/gw2-alliance-bot/internal/world"
 	"go.uber.org/zap"
 )
 
@@ -16,7 +20,6 @@ import (
 const (
 	InteractionIDModalAPIKey = "modal-api-key"
 	InteractionIDSetAPIKey   = "set-api-key"
-	InteractionIDSetRole     = "rep-guild"
 )
 
 type InteractionHandler func(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User)
@@ -28,10 +31,11 @@ type Command struct {
 
 type Interactions struct {
 	discord          *discordgo.Session
-	cache            *Cache
+	cache            *discord.Cache
 	backend          *api.ClientWithResponses
-	guilds           *Guilds
-	guildRoleHandler *GuildRoleHandler
+	service          *backend.Service
+	guilds           *guild.Guilds
+	guildRoleHandler *guild.GuildRoleHandler
 	commands         map[string]*Command
 	interactions     map[string]InteractionHandler
 	ui               *UIBuilder
@@ -39,33 +43,55 @@ type Interactions struct {
 	activeForUser func(userID string) bool
 }
 
-func newInteractions(discord *discordgo.Session, cache *Cache, backend *api.ClientWithResponses, activeForUser func(userID string) bool) *Interactions {
+func NewInteractions(discord *discordgo.Session, cache *discord.Cache, service *backend.Service, backend *api.ClientWithResponses, guilds *guild.Guilds, guildRoleHandler *guild.GuildRoleHandler, wvw *world.WvW, activeForUser func(userID string) bool) *Interactions {
 	c := &Interactions{
-		discord:       discord,
-		cache:         cache,
-		commands:      make(map[string]*Command),
-		interactions:  make(map[string]InteractionHandler),
-		backend:       backend,
-		guilds:        newGuilds(),
-		activeForUser: activeForUser,
+		discord:          discord,
+		cache:            cache,
+		commands:         make(map[string]*Command),
+		interactions:     make(map[string]InteractionHandler),
+		backend:          backend,
+		service:          service,
+		guilds:           guilds,
+		guildRoleHandler: guildRoleHandler,
+		activeForUser:    activeForUser,
+		ui: &UIBuilder{
+			guilds: guilds,
+		},
 	}
-	c.ui = &UIBuilder{
-		guilds: c.guilds,
-	}
-	c.guildRoleHandler = newGuildRoleHandler(discord, cache, c.guilds)
 
-	c.registerInteractionVerify()
-	c.registerInteractionStatus()
-	c.registerInteractionRefresh()
-	c.registerInteractionRep()
+	statusHandler := NewStatusCmd(backend, c.ui)
+	statusHandler.Register(c)
+
+	refreshHandler := NewRefreshCmd(backend, statusHandler, wvw)
+	refreshHandler.Register(c)
+
+	repHandler := NewRepCmd(backend, cache, c.guilds, c.guildRoleHandler, service, wvw)
+	repHandler.Register(c)
+
+	verifyHandler := NewVerifyCmd(backend, c.ui, repHandler)
+	verifyHandler.Register(c)
+
+	settingsHandler := NewSettingsCmd(service)
+	settingsHandler.Register(c)
+
+	discord.AddHandler(func(s *discordgo.Session, event *discordgo.Ready) {
+		c.register(s)
+	})
+
+	// Command handler
+	discord.AddHandler(c.onInteraction)
 
 	return c
 }
 
 func (c *Interactions) onInteraction(s *discordgo.Session, event *discordgo.InteractionCreate) {
-	user := c.determineUser(event)
+	user := determineUser(event)
 	if !c.activeForUser(user.ID) {
 		return
+	}
+
+	if event.Member != nil && event.GuildID != "" {
+		event.Member.GuildID = event.GuildID
 	}
 
 	switch event.Type {
@@ -108,7 +134,7 @@ func (c *Interactions) onCommand(s *discordgo.Session, event *discordgo.Interact
 		},
 	})
 	if err != nil {
-		c.onError(s, event, err)
+		onError(s, event, err)
 		return
 	}
 
@@ -129,7 +155,7 @@ func (c *Interactions) onCommand(s *discordgo.Session, event *discordgo.Interact
 	if command, ok := c.commands[commandKey]; ok {
 		command.handler(s, event, user)
 	} else {
-		c.onError(s, event, fmt.Errorf("unknown command name: %s", commandKey))
+		onError(s, event, fmt.Errorf("unknown command name: %s", commandKey))
 	}
 }
 
@@ -172,7 +198,7 @@ func (c *Interactions) onMessageComponent(s *discordgo.Session, event *discordgo
 				return
 			}
 		}
-		c.onError(s, event, fmt.Errorf("unknown interaction id: %s", id))
+		onError(s, event, fmt.Errorf("unknown interaction id: %s", id))
 	}
 }
 
@@ -184,7 +210,7 @@ func (c *Interactions) onModalSubmit(s *discordgo.Session, event *discordgo.Inte
 		},
 	})
 	if err != nil {
-		c.onError(s, event, err)
+		onError(s, event, err)
 		return
 	}
 
@@ -216,7 +242,7 @@ func (c *Interactions) onModalSubmit(s *discordgo.Session, event *discordgo.Inte
 	if handler, ok := c.interactions[id]; ok {
 		handler(s, event, user)
 	} else {
-		c.onError(s, event, errors.New("unknown interaction type"))
+		onError(s, event, errors.New("unknown interaction type"))
 	}
 }
 
@@ -247,7 +273,7 @@ func (c *Interactions) register(s *discordgo.Session) {
 	}
 }
 
-func (c *Interactions) determineUser(event *discordgo.InteractionCreate) *discordgo.User {
+func determineUser(event *discordgo.InteractionCreate) *discordgo.User {
 	if event.User != nil {
 		return event.User
 	}
@@ -260,7 +286,7 @@ func (c *Interactions) determineUser(event *discordgo.InteractionCreate) *discor
 	return nil
 }
 
-func (c *Interactions) onError(s *discordgo.Session, event *discordgo.InteractionCreate, err error) {
+func onError(s *discordgo.Session, event *discordgo.InteractionCreate, err error) {
 	zap.L().Error("error while executing command", zap.Error(err))
 
 	errStr := err.Error()
@@ -292,7 +318,7 @@ func (c *Interactions) onError(s *discordgo.Session, event *discordgo.Interactio
 	}
 }
 
-func (c *Interactions) resolveMembersFromApplicationCommandData(event *discordgo.InteractionCreate) map[string]*discordgo.Member {
+func resolveMembersFromApplicationCommandData(event *discordgo.InteractionCreate) map[string]*discordgo.Member {
 	var members map[string]*discordgo.Member
 	appComData := event.ApplicationCommandData()
 	if appComData.Resolved != nil {
@@ -310,7 +336,7 @@ func (c *Interactions) resolveMembersFromApplicationCommandData(event *discordgo
 			}
 		}
 	} else {
-		user := c.determineUser(event)
+		user := determineUser(event)
 		member := event.Member
 		if member == nil {
 			member = &discordgo.Member{

@@ -1,4 +1,4 @@
-package internal
+package interaction
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ const minNameLen = 4
 
 var accNickNameRegex = regexp.MustCompile(`(.*) \| .*\.\d{4}`)
 
-func setAccAsNick(discord *discordgo.Session, member *discordgo.Member, accName string) error {
+func SetAccAsNick(discord *discordgo.Session, member *discordgo.Member, accName string) error {
 	var origName string
 	if member.Nick != "" {
 		origName = member.Nick
@@ -22,7 +22,7 @@ func setAccAsNick(discord *discordgo.Session, member *discordgo.Member, accName 
 		origName = member.User.Username
 	}
 
-	newNick := appendAccName(origName, accName)
+	newNick := AppendAccName(origName, accName)
 	if newNick != member.Nick {
 		zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origName), zap.Int("length", utf8.RuneCountInString(newNick)))
 		return discord.GuildMemberNickname(member.GuildID, member.User.ID, newNick)
@@ -30,7 +30,30 @@ func setAccAsNick(discord *discordgo.Session, member *discordgo.Member, accName 
 	return nil
 }
 
-func appendAccName(origName string, accName string) string {
+func SetAccsAsNick(discord *discordgo.Session, member *discordgo.Member, accNames []string) error {
+	if len(accNames) == 0 {
+		return nil
+	}
+
+	var newNick string
+	var origName string
+	if member.Nick != "" {
+		origName = member.Nick
+	} else {
+		origName = member.User.Username
+	}
+	for _, accName := range accNames {
+		newNick = AppendAccName(origName, accName)
+		if newNick == member.Nick {
+			return nil
+		}
+	}
+
+	zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origName), zap.Int("length", utf8.RuneCountInString(newNick)))
+	return discord.GuildMemberNickname(member.GuildID, member.User.ID, newNick)
+}
+
+func AppendAccName(origName string, accName string) string {
 	// Check if account name is already appended and discord it, if so
 	matches := accNickNameRegex.FindStringSubmatch(origName)
 	if len(matches) > 1 {

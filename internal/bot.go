@@ -7,26 +7,34 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/MrGunflame/gw2api"
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
+	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
+	discord_internal "github.com/vennekilde/gw2-alliance-bot/internal/discord"
+	"github.com/vennekilde/gw2-alliance-bot/internal/guild"
+	"github.com/vennekilde/gw2-alliance-bot/internal/interaction"
+	"github.com/vennekilde/gw2-alliance-bot/internal/world"
 	"go.uber.org/zap"
 )
 
-const platformID = 2
-
 type Bot struct {
-	cache        *Cache
-	interactions *Interactions
+	cache        *discord_internal.Cache
+	interactions *interaction.Interactions
 	backend      *api.ClientWithResponses
+	service      *backend.Service
 
-	token   string
-	discord *discordgo.Session
+	worlds           *world.Worlds
+	wvw              *world.WvW
+	token            string
+	guildRoleHandler *guild.GuildRoleHandler
+	discord          *discordgo.Session
 
 	// Debug
 	debugUser string
 }
 
-func NewBot(discordToken string, backendURL string, backendToken string, debugUser string) *Bot {
+func NewBot(discordToken string, backendURL string, serviceUUID string, backendToken string, debugUser string) *Bot {
 	client, _ := api.NewClientWithResponses(
 		backendURL,
 		api.WithBaseURL(backendURL),
@@ -37,32 +45,52 @@ func NewBot(discordToken string, backendURL string, backendToken string, debugUs
 			},
 		),
 	)
+	discord, err := discordgo.New("Bot " + discordToken)
+	if err != nil {
+		panic(fmt.Errorf("error creating Discord session: %w", err))
+	}
+
+	cache := discord_internal.NewCache(discord)
+	service := backend.NewService(client, serviceUUID)
+	worlds := world.NewWorlds(gw2api.New())
+	wvw := world.NewWvW(discord, service, worlds)
+	guilds := guild.NewGuilds()
+	guildRoleHandler := guild.NewGuildRoleHandler(discord, cache, guilds, service)
 
 	b := &Bot{
-		backend:   client,
-		token:     discordToken,
-		debugUser: debugUser,
+		discord:          discord,
+		cache:            cache,
+		backend:          client,
+		token:            discordToken,
+		debugUser:        debugUser,
+		service:          service,
+		worlds:           worlds,
+		wvw:              wvw,
+		guildRoleHandler: guildRoleHandler,
 	}
+	b.interactions = interaction.NewInteractions(b.discord, b.cache, b.service, b.backend, guilds, guildRoleHandler, wvw, b.ActiveForUser)
 
 	return b
 }
 
 func (b *Bot) Start() {
-	var err error
-	b.discord, err = discordgo.New("Bot " + b.token)
-	if err != nil {
-		panic(fmt.Errorf("error creating Discord session: %w", err))
+	for {
+		err := b.service.Synchronize()
+		if err == nil {
+			break
+		}
+		log.Printf("unable to synchronize service settings: %v", err)
+		time.Sleep(5 * time.Second)
 	}
-	b.cache = newCache(b.discord)
-	b.interactions = newInteractions(b.discord, b.cache, b.backend, b.ActiveForUser)
+
+	b.worlds.Start()
 
 	b.discord.Identify.Intents = discordgo.IntentDirectMessages | discordgo.IntentGuildMembers | discordgo.IntentsGuilds
 	b.discord.StateEnabled = true
 
 	b.discord.AddHandler(func(s *discordgo.Session, event *discordgo.Ready) {
 		log.Printf("Logged in as: %v#%v", s.State.User.Username, s.State.User.Discriminator)
-		b.cache.cacheAll()
-		b.interactions.register(s)
+		b.cache.CacheAll()
 
 		go b.beginBackendSync()
 	})
@@ -70,11 +98,17 @@ func (b *Bot) Start() {
 	b.discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildMemberUpdate) {
 		zap.L().Info("member update", zap.Any("event", event))
 	})
+	b.discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildCreate) {
+		zap.L().Info("guild joined", zap.Any("event", event))
+		b.cache.CacheAll()
+	})
 
-	// Command handler
-	b.discord.AddHandler(b.interactions.onInteraction)
+	b.discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildDelete) {
+		zap.L().Info("guild left", zap.Any("event", event))
+		b.cache.CacheAll()
+	})
 
-	err = b.discord.Open()
+	err := b.discord.Open()
 	if err != nil {
 		panic(fmt.Errorf("error opening connection: %w", err))
 	}
@@ -118,7 +152,7 @@ func (b *Bot) beginBackendSync() {
 						continue
 					}
 
-					resp, err := b.backend.GetPlatformUserWithResponse(ctx, platformID, member.User.ID, &api.GetPlatformUserParams{})
+					resp, err := b.backend.GetPlatformUserWithResponse(ctx, backend.PlatformID, member.User.ID, &api.GetPlatformUserParams{})
 					if err != nil {
 						zap.L().Error("unable to get verification status for member", zap.Any("member", member), zap.Error(err))
 						continue
@@ -128,18 +162,29 @@ func (b *Bot) beginBackendSync() {
 						continue
 					}
 					// Ensure user has correct roles
-					_ = b.interactions.guildRoleHandler.checkRoles(guild, member, resp.JSON200.Accounts)
+					_ = b.guildRoleHandler.CheckRoles(guild, member, resp.JSON200.Accounts)
 
-					// @TODO disabled until account pick can be used
-					/*accName := resp.JSON200.Name
-					if accName != "" {
-						// Cache guildID in member struct, as it is not by default
-						member.GuildID = guild.ID
-						err := setAccAsNick(b.discord, member, accName)
-						if err != nil {
-							zap.L().Error("unable to set nick name", zap.Any("member", member), zap.Error(err))
+					err = b.wvw.VerifyWvWWorldRoles(guild.ID, member, resp.JSON200.Accounts)
+					if err != nil {
+						zap.L().Error("unable to verify WvW roles", zap.Any("member", member), zap.Error(err))
+					}
+
+					if b.service.GetSetting(guild.ID, backend.SettingAccRepEnabled) == "true" {
+						accNames := make([]string, 0, len(resp.JSON200.Accounts))
+						for _, acc := range resp.JSON200.Accounts {
+							if acc.Expired == nil || !*acc.Expired {
+								accNames = append(accNames, acc.Name)
+							}
 						}
-					}*/
+						if len(accNames) > 0 {
+							// Cache guildID in member struct, as it is not by default
+							member.GuildID = guild.ID
+							err := interaction.SetAccsAsNick(b.discord, member, accNames)
+							if err != nil {
+								zap.L().Error("unable to set nick name", zap.Any("member", member), zap.Error(err))
+							}
+						}
+					}
 				}
 				// Check if we should fetch more members
 				if len(members) == 0 || len(members) < limit {

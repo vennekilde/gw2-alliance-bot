@@ -1,4 +1,4 @@
-package internal
+package guild
 
 import (
 	"fmt"
@@ -7,6 +7,8 @@ import (
 	"github.com/MrGunflame/gw2api"
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
+	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
+	"github.com/vennekilde/gw2-alliance-bot/internal/discord"
 	"go.uber.org/zap"
 )
 
@@ -14,21 +16,23 @@ var roleNameMatcher = regexp.MustCompile(`\[\S{0,4}\] ([\S ]*)?\S`)
 
 type GuildRoleHandler struct {
 	discord *discordgo.Session
-	cache   *Cache
+	cache   *discord.Cache
 	guilds  *Guilds
+	service *backend.Service
 }
 
-func newGuildRoleHandler(discord *discordgo.Session, cache *Cache, guilds *Guilds) *GuildRoleHandler {
+func NewGuildRoleHandler(discord *discordgo.Session, cache *discord.Cache, guilds *Guilds, service *backend.Service) *GuildRoleHandler {
 	return &GuildRoleHandler{
 		discord: discord,
 		cache:   cache,
 		guilds:  guilds,
+		service: service,
 	}
 }
 
-func (g *GuildRoleHandler) checkRoles(guild *discordgo.Guild, member *discordgo.Member, accounts []api.Account) (serverGuildRoles []*discordgo.Role) {
-	verificationRole := g.identifyVerificationRole(guild.ID)
-	serverCache := g.cache.servers[guild.ID]
+func (g *GuildRoleHandler) CheckRoles(guild *discordgo.Guild, member *discordgo.Member, accounts []api.Account) (serverGuildRoles []*discordgo.Role) {
+	verificationRole := g.service.GetSetting(guild.ID, backend.SettingGuildCommonRole)
+	serverCache := g.cache.Servers[guild.ID]
 
 	for _, account := range accounts {
 		if account.Guilds == nil {
@@ -38,7 +42,7 @@ func (g *GuildRoleHandler) checkRoles(guild *discordgo.Guild, member *discordgo.
 		gw2Guilds := g.guilds.GetGuildInfo(account.Guilds)
 		for _, guild := range gw2Guilds {
 			var role *discordgo.Role
-			for _, role = range serverCache.roles {
+			for _, role = range serverCache.Roles {
 				if role.Name == fmt.Sprintf("[%s] %s", guild.Tag, guild.Name) {
 					serverGuildRoles = append(serverGuildRoles, role)
 					break
@@ -51,12 +55,12 @@ func (g *GuildRoleHandler) checkRoles(guild *discordgo.Guild, member *discordgo.
 	hasVerifiedRole := false
 	hasAGuildRole := false
 	for _, roleID := range member.Roles {
-		if roleID == verificationRole.ID {
+		if roleID == verificationRole {
 			hasVerifiedRole = true
 			continue
 		}
 
-		role := serverCache.roles[roleID]
+		role := serverCache.Roles[roleID]
 		if role != nil && roleNameMatcher.MatchString(role.Name) {
 			// Check if user is allowed to have this guild role
 			isAllowedRole := false
@@ -80,21 +84,23 @@ func (g *GuildRoleHandler) checkRoles(guild *discordgo.Guild, member *discordgo.
 		// Add guild role, if member only has 1 possible guild role
 		err := g.discord.GuildMemberRoleAdd(guild.ID, member.User.ID, serverGuildRoles[0].ID)
 		if err != nil {
-			zap.L().Warn("unable to add role to member", zap.Any("role", verificationRole), zap.Any("member", member), zap.Error(err))
+			zap.L().Warn("unable to add role to member", zap.Any("role", serverGuildRoles[0].ID), zap.Any("member", member), zap.Error(err))
 		}
 	}
 
-	if !isVerified && hasVerifiedRole {
-		// Remove verified role, if user was not verified above
-		err := g.discord.GuildMemberRoleRemove(guild.ID, member.User.ID, verificationRole.ID)
-		if err != nil {
-			zap.L().Warn("unable to remove role from member", zap.Any("role", verificationRole), zap.Any("member", member), zap.Error(err))
-		}
-	} else if isVerified && !hasVerifiedRole {
-		// Add verified role, if user is verified, but does not have it
-		err := g.discord.GuildMemberRoleAdd(guild.ID, member.User.ID, verificationRole.ID)
-		if err != nil {
-			zap.L().Warn("unable to add role to member", zap.Any("role", verificationRole), zap.Any("member", member), zap.Error(err))
+	if verificationRole != "" {
+		if !isVerified && hasVerifiedRole {
+			// Remove verified role, if user was not verified above
+			err := g.discord.GuildMemberRoleRemove(guild.ID, member.User.ID, verificationRole)
+			if err != nil {
+				zap.L().Warn("unable to remove role from member", zap.Any("role", verificationRole), zap.Any("member", member), zap.Error(err))
+			}
+		} else if isVerified && !hasVerifiedRole {
+			// Add verified role, if user is verified, but does not have it
+			err := g.discord.GuildMemberRoleAdd(guild.ID, member.User.ID, verificationRole)
+			if err != nil {
+				zap.L().Warn("unable to add role to member", zap.Any("role", verificationRole), zap.Any("member", member), zap.Error(err))
+			}
 		}
 	}
 
@@ -102,24 +108,14 @@ func (g *GuildRoleHandler) checkRoles(guild *discordgo.Guild, member *discordgo.
 }
 
 func (g *GuildRoleHandler) AddVerificationRole(guildID string, userID string) error {
-	verificationRole := g.identifyVerificationRole(guildID)
-	if verificationRole != nil {
-		err := g.discord.GuildMemberRoleAdd(guildID, userID, verificationRole.ID)
+	verificationRole := g.service.GetSetting(guildID, backend.SettingGuildCommonRole)
+	if verificationRole != "" {
+		err := g.discord.GuildMemberRoleAdd(guildID, userID, verificationRole)
 		if err != nil {
 			return err
 		}
 	}
 
-	return nil
-}
-
-func (g *GuildRoleHandler) identifyVerificationRole(guildID string) *discordgo.Role {
-	serverCache := g.cache.servers[guildID]
-	for _, role := range serverCache.roles {
-		if role.Name == "Verified" {
-			return role
-		}
-	}
 	return nil
 }
 
@@ -129,17 +125,17 @@ func (g *GuildRoleHandler) SetGuildRole(guildID string, userID string, roleID st
 		return err
 	}
 
-	verificationRole := g.identifyVerificationRole(guildID)
-	serverCache := g.cache.servers[guildID]
+	verificationRole := g.service.GetSetting(guildID, backend.SettingGuildCommonRole)
+	serverCache := g.cache.Servers[guildID]
 
 	// Remove other guild roles
 	for _, memberRoleID := range member.Roles {
-		if memberRoleID == roleID || memberRoleID == verificationRole.ID {
+		if memberRoleID == roleID || memberRoleID == verificationRole {
 			// Do not remove role we want to add
 			continue
 		}
 
-		role := serverCache.roles[memberRoleID]
+		role := serverCache.Roles[memberRoleID]
 		if role != nil && roleNameMatcher.MatchString(role.Name) {
 			err := g.discord.GuildMemberRoleRemove(guildID, userID, memberRoleID)
 			if err != nil {
@@ -148,8 +144,8 @@ func (g *GuildRoleHandler) SetGuildRole(guildID string, userID string, roleID st
 		}
 	}
 
-	if verificationRole != nil {
-		err = g.discord.GuildMemberRoleAdd(guildID, userID, verificationRole.ID)
+	if verificationRole != "" {
+		err = g.discord.GuildMemberRoleAdd(guildID, userID, verificationRole)
 		if err != nil {
 			return err
 		}
@@ -168,7 +164,7 @@ type Guilds struct {
 	cache  map[string]*gw2api.Guild
 }
 
-func newGuilds() *Guilds {
+func NewGuilds() *Guilds {
 	return &Guilds{
 		cache:  make(map[string]*gw2api.Guild),
 		gw2API: gw2api.New(),

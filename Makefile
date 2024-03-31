@@ -1,7 +1,7 @@
 BIN_NAME = gw2-alliance-bot
 
-gen-api:
-	go-raml client --ramlfile api/api.raml --dir internal/api --package api --import-path github.com/vennekilde/gw2-alliance-bot/internal/api 
+install_dev_tools:
+	go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@latest
 
 build: export CGO_ENABLED=0
 build: 
@@ -21,3 +21,6 @@ package:
 
 scan:
 	gosec ./...
+
+generate:
+	go generate ./...

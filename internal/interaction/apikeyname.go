@@ -1,10 +1,12 @@
-package internal
+package interaction
 
 import (
 	"crypto/md5" // #nosec G501 - md5 not used for cryptography
 	"encoding/hex"
 	"strconv"
 	"strings"
+
+	"github.com/vennekilde/gw2-alliance-bot/internal/world"
 )
 
 // Honestly, it doesn't matter what salt is used, or if it is public knowledge. The point isn't for it to be secure
@@ -18,7 +20,7 @@ func GetAPIKeyName(worldPerspective int, platformID int, platformUserId string) 
 	if platformID > 0 {
 		name = strconv.Itoa(platformID) + "-" + name
 	}
-	name = NormalizedWorldName(worldPerspective) + name
+	name = world.NormalizedWorldName(worldPerspective) + name
 	return name
 }
 

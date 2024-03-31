@@ -1,4 +1,4 @@
-package internal
+package interaction
 
 import (
 	"context"
@@ -7,11 +7,25 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
+	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
+	"github.com/vennekilde/gw2-alliance-bot/internal/world"
 )
 
-func (c *Interactions) registerInteractionStatus() {
+type StatusCmd struct {
+	backend *api.ClientWithResponses
+	ui      *UIBuilder
+}
+
+func NewStatusCmd(backend *api.ClientWithResponses, ui *UIBuilder) *StatusCmd {
+	return &StatusCmd{
+		backend: backend,
+		ui:      ui,
+	}
+}
+
+func (c *StatusCmd) Register(i *Interactions) {
 	// Status cmd
-	c.addCommand(&Command{
+	i.addCommand(&Command{
 		command: &discordgo.ApplicationCommand{
 			Name:        "status",
 			Description: "Display your current verification status",
@@ -23,7 +37,7 @@ func (c *Interactions) registerInteractionStatus() {
 	var statsPermissionDM bool = false
 
 	// Status menu
-	c.addCommand(&Command{
+	i.addCommand(&Command{
 		command: &discordgo.ApplicationCommand{
 			Name:                     "Status",
 			Type:                     discordgo.UserApplicationCommand,
@@ -52,17 +66,13 @@ func authorFromInteraction(event *discordgo.InteractionCreate, member *discordgo
 	return &author
 }
 
-func (c *Interactions) onCommandStatus(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
-	if !c.activeForUser(user.ID) {
-		return
-	}
-
-	members := c.resolveMembersFromApplicationCommandData(event)
+func (c *StatusCmd) onCommandStatus(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	members := resolveMembersFromApplicationCommandData(event)
 	for memberID, member := range members {
 		ctx := context.Background()
-		resp, err := c.backend.GetPlatformUserWithResponse(ctx, platformID, memberID, &api.GetPlatformUserParams{})
+		resp, err := c.backend.GetPlatformUserWithResponse(ctx, backend.PlatformID, memberID, &api.GetPlatformUserParams{})
 		if err != nil {
-			c.onError(s, event, err)
+			onError(s, event, err)
 			return
 		}
 		user := resp.JSON200
@@ -70,7 +80,7 @@ func (c *Interactions) onCommandStatus(s *discordgo.Session, event *discordgo.In
 	}
 }
 
-func (c *Interactions) sendFollowupStatusMessage(s *discordgo.Session, event *discordgo.InteractionCreate, memberID string, member *discordgo.Member, user *api.User) {
+func (c *StatusCmd) sendFollowupStatusMessage(s *discordgo.Session, event *discordgo.InteractionCreate, memberID string, member *discordgo.Member, user *api.User) {
 	author := authorFromInteraction(event, member, memberID)
 
 	accountTableFields := c.ui.buildStatusFields(user)
@@ -92,11 +102,11 @@ func (c *Interactions) sendFollowupStatusMessage(s *discordgo.Session, event *di
 		Embeds: embeds,
 	})
 	if err != nil {
-		c.onError(s, event, err)
+		onError(s, event, err)
 	}
 }
 
-func (c *Interactions) buildAccountEmbeds(accounts []api.Account, bans []api.Ban) []*discordgo.MessageEmbed {
+func (c *StatusCmd) buildAccountEmbeds(accounts []api.Account, bans []api.Ban) []*discordgo.MessageEmbed {
 	activeBan := api.ActiveBan(bans)
 
 	embeds := []*discordgo.MessageEmbed{}
@@ -108,7 +118,7 @@ func (c *Interactions) buildAccountEmbeds(accounts []api.Account, bans []api.Ban
 	return embeds
 }
 
-func (c *Interactions) buildAccountEmbed(account api.Account, banned bool) *discordgo.MessageEmbed {
+func (c *StatusCmd) buildAccountEmbed(account api.Account, banned bool) *discordgo.MessageEmbed {
 	fields := c.buildStatusFields(&account)
 
 	embed := discordgo.MessageEmbed{
@@ -133,7 +143,7 @@ func (c *Interactions) buildAccountEmbed(account api.Account, banned bool) *disc
 	return &embed
 }
 
-func (c *Interactions) buildOverviewStatusFields(accounts []api.Account) []*discordgo.MessageEmbedField {
+func (c *StatusCmd) buildOverviewStatusFields(accounts []api.Account) []*discordgo.MessageEmbedField {
 	fields := []*discordgo.MessageEmbedField{}
 
 	for _, account := range accounts {
@@ -143,10 +153,10 @@ func (c *Interactions) buildOverviewStatusFields(accounts []api.Account) []*disc
 	return fields
 }
 
-func (c *Interactions) buildStatusFields(account *api.Account) []*discordgo.MessageEmbedField {
+func (c *StatusCmd) buildStatusFields(account *api.Account) []*discordgo.MessageEmbedField {
 	fields := []*discordgo.MessageEmbedField{}
 	if account != nil {
-		guilds := c.guilds.GetGuildInfo(account.Guilds)
+		guilds := c.ui.guilds.GetGuildInfo(account.Guilds)
 		guildNames := make([]string, len(guilds))
 		for i, guild := range guilds {
 			guildNames[i] = fmt.Sprintf("[%s] %s", guild.Tag, guild.Name)
@@ -176,7 +186,7 @@ func (c *Interactions) buildStatusFields(account *api.Account) []*discordgo.Mess
 		fields = append(fields,
 			&discordgo.MessageEmbedField{
 				Name:  "World",
-				Value: WorldNames[account.World].Name,
+				Value: world.WorldNames[account.World].Name,
 			},
 		)
 	}

@@ -1,4 +1,4 @@
-package internal
+package interaction
 
 import (
 	"fmt"
@@ -7,10 +7,12 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
+	"github.com/vennekilde/gw2-alliance-bot/internal/guild"
+	"github.com/vennekilde/gw2-alliance-bot/internal/world"
 )
 
 type UIBuilder struct {
-	guilds *Guilds
+	guilds *guild.Guilds
 }
 
 func (ui *UIBuilder) buildStatusFields(user *api.User) []*discordgo.MessageEmbedField {
@@ -78,7 +80,7 @@ func (ui *UIBuilder) buildWorldNameColumnField(accounts []api.Account) *discordg
 
 	for _, account := range accounts {
 		if account.Id != "" {
-			world := WorldNames[account.World]
+			world := world.WorldNames[account.World]
 			if field.Value == "" {
 				field.Value = world.Name
 			} else {
@@ -190,7 +192,7 @@ func (ui *UIBuilder) buildTemporaryWorldNameColumnField(ephemeralAssocs []api.Ep
 
 	for _, ephemeralAssoc := range ephemeralAssocs {
 		if ephemeralAssoc.Until != nil && ephemeralAssoc.World != nil {
-			world := WorldNames[*ephemeralAssoc.World]
+			world := world.WorldNames[*ephemeralAssoc.World]
 			if field.Value == "" {
 				field.Value = world.Name
 			} else {

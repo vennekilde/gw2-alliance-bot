@@ -20,9 +20,10 @@ func main() {
 	discordToken := os.Getenv("discordToken")
 	backendURL := os.Getenv("backendURL")
 	backendToken := os.Getenv("backendToken")
+	serviceUUID := os.Getenv("serviceUUID")
 	debugUser := os.Getenv("debugUser")
 
-	bot := internal.NewBot(discordToken, backendURL, backendToken, debugUser)
+	bot := internal.NewBot(discordToken, backendURL, serviceUUID, backendToken, debugUser)
 	bot.Start()
 	defer bot.Close()
 

@@ -1,4 +1,4 @@
-package internal
+package interaction
 
 import (
 	"context"
@@ -8,38 +8,71 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
+	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
 )
 
 var APIKeyErrorRegex = regexp.MustCompile(`(.*)(You need to name your api key ").*(" instead of.*)`)
 
-func (c *Interactions) registerInteractionVerify() {
-	c.interactions[InteractionIDModalAPIKey] = c.openAPIKeyModal
-	c.interactions[InteractionIDSetAPIKey] = c.setAPIKey
+const tmplAPIKeyInstructions = `Ensure the api key meets the following criteria:
+
+**Name your API key**
+%s - %s
+
+**Permissions**
+- Characters
+- Progression
+(See the image below)`
+
+type VerifyCmd struct {
+	backend *api.ClientWithResponses
+	ui      *UIBuilder
+	RepCmd  *RepCmd
+}
+
+func NewVerifyCmd(backend *api.ClientWithResponses, ui *UIBuilder, repCmd *RepCmd) *VerifyCmd {
+	return &VerifyCmd{
+		backend: backend,
+		ui:      ui,
+		RepCmd:  repCmd,
+	}
+}
+
+func (c *VerifyCmd) Register(i *Interactions) {
+	i.interactions[InteractionIDModalAPIKey] = c.openAPIKeyModal
+	i.interactions[InteractionIDSetAPIKey] = c.setAPIKeyModal
 
 	// Verify
-	c.addCommand(&Command{
+	i.addCommand(&Command{
 		command: &discordgo.ApplicationCommand{
 			Name:        "verify",
 			Description: "Verify with your Guild Wars 2 API Key",
+			Options: []*discordgo.ApplicationCommandOption{
+				{
+					Type:        discordgo.ApplicationCommandOptionString,
+					Name:        "apikey",
+					Description: "Verify with your Guild Wars 2 API Key",
+				},
+			},
 		},
 		handler: func(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
-			if !c.activeForUser(user.ID) {
+			if len(event.ApplicationCommandData().Options) > 0 {
+				apiKey := event.ApplicationCommandData().Options[0].StringValue()
+				c.setAPIKey(s, event, user, apiKey)
 				return
 			}
-
 			ctx := context.Background()
 			code := GetAPIKeyCode(2, user.ID)
 
 			var guild *discordgo.Guild
-			for _, guild = range c.discord.State.Guilds {
+			for _, guild = range s.State.Guilds {
 				if guild.ID == event.GuildID {
 					break
 				}
 			}
 
-			resp, err := c.backend.GetPlatformUserWithResponse(ctx, platformID, user.ID, &api.GetPlatformUserParams{})
+			resp, err := c.backend.GetPlatformUserWithResponse(ctx, backend.PlatformID, user.ID, &api.GetPlatformUserParams{})
 			if err != nil {
-				c.onError(s, event, err)
+				onError(s, event, err)
 			}
 
 			embeds := []*discordgo.MessageEmbed{
@@ -47,16 +80,8 @@ func (c *Interactions) registerInteractionVerify() {
 					Title: "Instructions",
 					Fields: []*discordgo.MessageEmbedField{
 						{
-							Name: `1. Click "Create API Key"`,
-							Value: fmt.Sprintf(`Ensure the api key meets the following criteria:
-
-									**Name your API key**
-									%s - %s
-
-									**Permissions**
-									- Characters
-									- Progression
-									(See the image below)`, guild.Name, code),
+							Name:  `1. Click "Create API Key"`,
+							Value: fmt.Sprintf(tmplAPIKeyInstructions, guild.Name, code),
 						},
 						{
 							Name:  `2. Click "Set API Key"`,
@@ -90,7 +115,7 @@ func (c *Interactions) registerInteractionVerify() {
 				},
 			})
 			if err != nil {
-				c.onError(s, event, err)
+				onError(s, event, err)
 			}
 
 			if resp.StatusCode() != 404 && resp.JSON200 != nil {
@@ -117,7 +142,7 @@ func (c *Interactions) registerInteractionVerify() {
 							[]*discordgo.MessageEmbedField{
 								{
 									Name:  "Your Discord account is already linked with a Guild Wars 2 account",
-									Value: `If you wish the change to another Guild Wars 2 account, you can follow the instructions posted above`,
+									Value: `If you wish the add another Guild Wars 2 account, you can follow the instructions posted above`,
 								},
 							},
 							fields...,
@@ -128,7 +153,7 @@ func (c *Interactions) registerInteractionVerify() {
 				var components []discordgo.MessageComponent
 				if event.Member != nil {
 					// Only invoked, if interaction happened inside a discord server
-					repComponents, _ := c.buildOverviewGuildComponents(event.GuildID, resp.JSON200.Accounts)
+					repComponents, _ := c.RepCmd.buildOverviewGuildComponents(event.GuildID, resp.JSON200.Accounts)
 					if len(repComponents) > 0 {
 						embeds = append(embeds,
 							&discordgo.MessageEmbed{
@@ -142,9 +167,10 @@ func (c *Interactions) registerInteractionVerify() {
 								},
 							})
 						// Ensure user is in the verified group
-						err = c.guildRoleHandler.AddVerificationRole(event.GuildID, user.ID)
+						repComponents, _ := c.RepCmd.buildOverviewGuildComponents(event.GuildID, resp.JSON200.Accounts)
+						err = c.RepCmd.guildRoleHandler.AddVerificationRole(event.GuildID, user.ID)
 						if err != nil {
-							c.onError(s, event, err)
+							onError(s, event, err)
 							return
 						}
 
@@ -162,14 +188,14 @@ func (c *Interactions) registerInteractionVerify() {
 					Components: components,
 				})
 				if err != nil {
-					c.onError(s, event, err)
+					onError(s, event, err)
 				}
 			}
 		},
 	})
 }
 
-func (c *Interactions) openAPIKeyModal(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+func (c *VerifyCmd) openAPIKeyModal(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 	err := s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
@@ -195,42 +221,48 @@ func (c *Interactions) openAPIKeyModal(s *discordgo.Session, event *discordgo.In
 		},
 	})
 	if err != nil {
-		c.onError(s, event, err)
+		onError(s, event, err)
 	}
 }
 
-func (c *Interactions) setAPIKey(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
-	ctx := context.Background()
+func (c *VerifyCmd) setAPIKeyModal(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 	apiKey := event.ModalSubmitData().Components[0].(*discordgo.ActionsRow).Components[0].(*discordgo.TextInput).Value
+	c.setAPIKey(s, event, user, apiKey)
+}
+
+func (c *VerifyCmd) setAPIKey(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User, apiKey string) {
+	ctx := context.Background()
 	body := api.APIKeyData{
 		Apikey:  apiKey,
 		Primary: true,
 	}
-	resp, err := c.backend.PutPlatformUserAPIKeyWithResponse(ctx, platformID, user.ID, nil, body)
+	resp, err := c.backend.PutPlatformUserAPIKeyWithResponse(ctx, backend.PlatformID, user.ID, nil, body)
 	if err != nil {
-		c.onError(s, event, fmt.Errorf("error while executing command"))
+		onError(s, event, fmt.Errorf("error while executing command"))
 		return
 	}
 
 	switch resp.StatusCode() {
 	case 200:
 		// skip default handler
+	case 201:
+		// skip default handler
 	case 500:
 		// Quick fix for proper apikey name error
 		code := GetAPIKeyCode(2, user.ID)
 
 		var guild *discordgo.Guild
-		for _, guild = range c.discord.State.Guilds {
+		for _, guild = range s.State.Guilds {
 			if guild.ID == event.GuildID {
 				break
 			}
 		}
 
 		apiErr := errors.New(APIKeyErrorRegex.ReplaceAllString(resp.JSON500.SafeDisplayError, fmt.Sprintf("${1}\n${2}%s - %s${3}", guild.Name, code)))
-		c.onError(s, event, apiErr)
+		onError(s, event, apiErr)
 		return
 	default:
-		c.onError(s, event, errors.New("unable to set api key - reason unknown"))
+		onError(s, event, errors.New("unable to set api key - reason unknown"))
 		return
 	}
 
@@ -248,9 +280,9 @@ func (c *Interactions) setAPIKey(s *discordgo.Session, event *discordgo.Interact
 		},
 	})
 	if err != nil {
-		c.onError(s, event, err)
+		onError(s, event, err)
 		return
 	}
 
-	c.onCommandRep(s, event, user)
+	c.RepCmd.onCommandRep(s, event, user)
 }
