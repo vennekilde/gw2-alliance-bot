@@ -25,7 +25,7 @@ func NewWvW(discord *discordgo.Session, service *backend.Service, worlds *Worlds
 }
 
 // Check if a platform user is in the correct role for their world
-func (w *WvW) VerifyWvWWorldRoles(guildID string, member *discordgo.Member, accounts []api.Account) error {
+func (w *WvW) VerifyWvWWorldRoles(guildID string, member *discordgo.Member, accounts []api.Account, bans []api.Ban) error {
 	primaryWorld := w.service.GetSetting(guildID, backend.SettingWvWWorld)
 	if primaryWorld == "disabled" || primaryWorld == "" {
 		return nil
@@ -49,6 +49,12 @@ func (w *WvW) VerifyWvWWorldRoles(guildID string, member *discordgo.Member, acco
 	shouldHaveLinkedRole := false
 
 	for _, account := range accounts {
+		isBanned := slices.ContainsFunc(bans, func(b api.Ban) bool {
+			return b.UserID == account.UserID
+		})
+		if isBanned {
+			continue
+		}
 		if account.World == primaryWorldID {
 			shouldHavePrimaryRole = true
 			// Check if user has the primary role

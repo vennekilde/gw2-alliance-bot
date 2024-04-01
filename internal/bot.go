@@ -105,7 +105,7 @@ func (b *Bot) Start() {
 		}
 
 		b.guildRoleHandler.CheckRoles(event.GuildID, event.Member, resp.JSON200.Accounts)
-		b.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, resp.JSON200.Accounts)
+		b.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, resp.JSON200.Accounts, resp.JSON200.Bans)
 	})
 	b.discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildCreate) {
 		zap.L().Info("guild joined", zap.Any("event", event))
@@ -173,7 +173,7 @@ func (b *Bot) beginBackendSync() {
 					// Ensure user has correct roles
 					_ = b.guildRoleHandler.CheckRoles(guild.ID, member, resp.JSON200.Accounts)
 
-					err = b.wvw.VerifyWvWWorldRoles(guild.ID, member, resp.JSON200.Accounts)
+					err = b.wvw.VerifyWvWWorldRoles(guild.ID, member, resp.JSON200.Accounts, resp.JSON200.Bans)
 					if err != nil {
 						zap.L().Error("unable to verify WvW roles", zap.Any("member", member), zap.Error(err))
 					}

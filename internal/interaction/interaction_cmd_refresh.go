@@ -58,7 +58,7 @@ func (c *RefreshCmd) onRefresh(s *discordgo.Session, event *discordgo.Interactio
 			return
 		}
 
-		err = c.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, resp.JSON200.Accounts)
+		err = c.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, resp.JSON200.Accounts, resp.JSON200.Bans)
 		if err != nil {
 			onError(s, event, err)
 			return

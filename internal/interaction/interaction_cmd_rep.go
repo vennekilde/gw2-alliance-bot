@@ -69,7 +69,7 @@ func (c *RepCmd) onCommandRep(s *discordgo.Session, event *discordgo.Interaction
 	}
 
 	// We have the data, so might as well verify the roles, but ignore the error atm.
-	_ = c.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, status.JSON200.Accounts)
+	_ = c.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, status.JSON200.Accounts, status.JSON200.Bans)
 
 	c.handleRepFromStatus(s, event, user, status.JSON200.Accounts)
 }
