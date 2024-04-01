@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var roleNameMatcher = regexp.MustCompile(`\[\S{0,4}\] ([\S ]*)?\S`)
+var roleNameMatcher = regexp.MustCompile(`^\[\S{0,4}\] ([\S ]*)?\S`)
 
 type GuildRoleHandler struct {
 	discord *discordgo.Session
