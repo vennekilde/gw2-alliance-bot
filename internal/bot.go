@@ -140,7 +140,7 @@ func (b *Bot) beginBackendSync() {
 			for {
 				ctx := context.Background()
 
-				limit := 100
+				limit := 25
 				zap.L().Info("fetching guild members scheduled for refresh", zap.String("guild id", guild.ID), zap.String("guild name", guild.Name), zap.Int("limit", limit))
 				members, err := b.discord.GuildMembers(guild.ID, lastMemberID, limit)
 				if err != nil {
