@@ -3,6 +3,7 @@ package guild
 import (
 	"fmt"
 	"regexp"
+	"time"
 
 	"github.com/MrGunflame/gw2api"
 	"github.com/bwmarrin/discordgo"
@@ -183,6 +184,9 @@ func (g *Guilds) GetGuildInfo(guildIds *[]string) []*gw2api.Guild {
 			gw2ApiGuild, err := g.gw2API.Guild(id, false)
 			if err != nil {
 				zap.L().Warn("unable to fetch guild", zap.String("guild id", id), zap.Error(err))
+				if err.Error() == "too many requests" {
+					time.Sleep(5 * time.Second)
+				}
 				continue
 			}
 			g.cache[id] = &gw2ApiGuild
