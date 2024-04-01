@@ -16,7 +16,7 @@ var APIKeyErrorRegex = regexp.MustCompile(`(.*)(You need to name your api key ")
 const tmplAPIKeyInstructions = `Ensure the api key meets the following criteria:
 
 **Name your API key**
-%s - %s
+%s%s
 
 **Permissions**
 - Characters
@@ -63,9 +63,10 @@ func (c *VerifyCmd) Register(i *Interactions) {
 			ctx := context.Background()
 			code := GetAPIKeyCode(2, user.ID)
 
-			var guild *discordgo.Guild
-			for _, guild = range s.State.Guilds {
+			var apiKeyNamePrefix string
+			for _, guild := range s.State.Guilds {
 				if guild.ID == event.GuildID {
+					apiKeyNamePrefix = fmt.Sprintf("%s - ", guild.Name)
 					break
 				}
 			}
@@ -81,7 +82,7 @@ func (c *VerifyCmd) Register(i *Interactions) {
 					Fields: []*discordgo.MessageEmbedField{
 						{
 							Name:  `1. Click "Create API Key"`,
-							Value: fmt.Sprintf(tmplAPIKeyInstructions, guild.Name, code),
+							Value: fmt.Sprintf(tmplAPIKeyInstructions, apiKeyNamePrefix, code),
 						},
 						{
 							Name:  `2. Click "Set API Key"`,
@@ -251,14 +252,15 @@ func (c *VerifyCmd) setAPIKey(s *discordgo.Session, event *discordgo.Interaction
 		// Quick fix for proper apikey name error
 		code := GetAPIKeyCode(2, user.ID)
 
-		var guild *discordgo.Guild
-		for _, guild = range s.State.Guilds {
+		var apiKeyNamePrefix string
+		for _, guild := range s.State.Guilds {
 			if guild.ID == event.GuildID {
+				apiKeyNamePrefix = fmt.Sprintf("%s - ", guild.Name)
 				break
 			}
 		}
 
-		apiErr := errors.New(APIKeyErrorRegex.ReplaceAllString(resp.JSON500.SafeDisplayError, fmt.Sprintf("${1}\n${2}%s - %s${3}", guild.Name, code)))
+		apiErr := errors.New(APIKeyErrorRegex.ReplaceAllString(resp.JSON500.SafeDisplayError, fmt.Sprintf("${1}\n${2}%s - %s${3}", apiKeyNamePrefix, code)))
 		onError(s, event, apiErr)
 		return
 	default:
