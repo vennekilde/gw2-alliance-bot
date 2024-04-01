@@ -89,7 +89,7 @@ func (c *VerifyCmd) Register(i *Interactions) {
 						},
 					},
 					Image: &discordgo.MessageEmbedImage{
-						URL: "https://i.imgur.com/8CIsUhH.png",
+						URL: "https://i.imgur.com/wlIFMgR.png",
 					},
 				},
 			}
