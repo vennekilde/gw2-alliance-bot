@@ -97,6 +97,15 @@ func (b *Bot) Start() {
 
 	b.discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildMemberUpdate) {
 		zap.L().Info("member update", zap.Any("event", event))
+		ctx := context.Background()
+		resp, err := b.backend.GetPlatformUserWithResponse(ctx, backend.PlatformID, event.Member.User.ID, &api.GetPlatformUserParams{})
+		if err != nil {
+			zap.L().Error("unable to get verification status for member", zap.Any("member", event.Member), zap.Error(err))
+			return
+		}
+
+		b.guildRoleHandler.CheckRoles(event.GuildID, event.Member, resp.JSON200.Accounts)
+		b.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, resp.JSON200.Accounts)
 	})
 	b.discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildCreate) {
 		zap.L().Info("guild joined", zap.Any("event", event))
@@ -162,7 +171,7 @@ func (b *Bot) beginBackendSync() {
 						continue
 					}
 					// Ensure user has correct roles
-					_ = b.guildRoleHandler.CheckRoles(guild, member, resp.JSON200.Accounts)
+					_ = b.guildRoleHandler.CheckRoles(guild.ID, member, resp.JSON200.Accounts)
 
 					err = b.wvw.VerifyWvWWorldRoles(guild.ID, member, resp.JSON200.Accounts)
 					if err != nil {
