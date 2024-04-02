@@ -36,6 +36,7 @@ func NewGuildRoleHandler(discord *discordgo.Session, cache *discord.Cache, guild
 }
 
 func (g *GuildRoleHandler) CheckGuildTags(guildID string, member *discordgo.Member) {
+	member.GuildID = guildID
 	// Collect list of guild roles from the member
 	guildRoleTags := make(map[string]string)
 	for _, roleID := range member.Roles {
