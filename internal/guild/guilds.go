@@ -40,7 +40,16 @@ func (g *GuildRoleHandler) CheckGuildTags(guildID string, member *discordgo.Memb
 	// Collect list of guild roles from the member
 	guildRoleTags := make(map[string]string)
 	for _, roleID := range member.Roles {
-		role := g.cache.Servers[guildID].Roles[roleID]
+		gCache, ok := g.cache.Servers[guildID]
+		if !ok {
+			zap.L().Warn("unable to find server cache", zap.String("guildID", guildID))
+			return
+		}
+		role := gCache.Roles[roleID]
+		if role == nil {
+			zap.L().Warn("unable to find role in server cache", zap.String("roleID", roleID), zap.String("guildID", guildID))
+			return
+		}
 		if RegexRoleNameMatcher.MatchString(role.Name) {
 			guildRoleTags[role.Name] = RegexGuildTagMatcher.FindStringSubmatch(role.Name)[1]
 		}
