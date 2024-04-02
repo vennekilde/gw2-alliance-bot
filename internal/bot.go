@@ -132,7 +132,7 @@ func (b *Bot) beginBackendSync() {
 			} else {
 				time.Sleep(10 * time.Second)
 			}
-			zap.L().Info("received verification update", zap.Any("update", update), zap.Any("resp", resp), zap.Any("err", err))
+			zap.L().Info("received verification update", zap.Any("update", update), zap.Any("err", err))
 		}
 	}()
 
@@ -169,10 +169,7 @@ func (b *Bot) beginBackendSync() {
 						zap.L().Error("unable to verify WvW roles", zap.Any("member", member), zap.Error(err))
 					}
 
-					if b.service.GetSetting(guild.ID, backend.SettingGuildTagRepEnabled) == "true" {
-						// Ensure user has correct guild tags
-						b.guildRoleHandler.CheckGuildTags(guild.ID, member)
-					}
+					b.guildRoleHandler.CheckGuildTags(guild.ID, member)
 
 					if b.service.GetSetting(guild.ID, backend.SettingAccRepEnabled) == "true" {
 						accNames := make([]string, 0, len(resp.JSON200.Accounts))

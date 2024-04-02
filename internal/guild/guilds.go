@@ -36,6 +36,10 @@ func NewGuildRoleHandler(discord *discordgo.Session, cache *discord.Cache, guild
 }
 
 func (g *GuildRoleHandler) CheckGuildTags(guildID string, member *discordgo.Member) {
+	if g.service.GetSetting(guildID, backend.SettingGuildTagRepEnabled) != "true" {
+		return
+	}
+
 	member.GuildID = guildID
 	// Collect list of guild roles from the member
 	guildRoleTags := make(map[string]string)
@@ -47,7 +51,7 @@ func (g *GuildRoleHandler) CheckGuildTags(guildID string, member *discordgo.Memb
 		}
 		role := gCache.Roles[roleID]
 		if role == nil {
-			zap.L().Warn("unable to find role in server cache", zap.String("roleID", roleID), zap.String("guildID", guildID))
+			zap.L().Warn("unable to find role in server cache", zap.String("roleID", roleID), zap.String("guildID", guildID), zap.Any("member", member))
 			return
 		}
 		if RegexRoleNameMatcher.MatchString(role.Name) {
