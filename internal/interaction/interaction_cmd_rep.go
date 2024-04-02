@@ -63,16 +63,19 @@ func (c *RepCmd) onCommandRep(s *discordgo.Session, event *discordgo.Interaction
 	}
 
 	zap.L().Info("fetching status")
-	status, err := c.backend.GetPlatformUserWithResponse(ctx, backend.PlatformID, user.ID, &api.GetPlatformUserParams{})
+	resp, err := c.backend.GetPlatformUserWithResponse(ctx, backend.PlatformID, user.ID, &api.GetPlatformUserParams{})
 	if err != nil {
 		onError(s, event, err)
+		return
+	} else if resp.JSON200 == nil {
+		onError(s, event, errors.New("unexpected response from the server"))
 		return
 	}
 
 	// We have the data, so might as well verify the roles, but ignore the error atm.
-	_ = c.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, status.JSON200.Accounts, status.JSON200.Bans)
+	_ = c.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, resp.JSON200.Accounts, resp.JSON200.Bans)
 
-	c.handleRepFromStatus(s, event, user, status.JSON200.Accounts)
+	c.handleRepFromStatus(s, event, user, resp.JSON200.Accounts)
 }
 
 func (c *RepCmd) buildOverviewGuildComponents(guildID string, accounts []api.Account) (components []discordgo.MessageComponent, lastRole *discordgo.Role) {

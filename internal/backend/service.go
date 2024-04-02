@@ -41,9 +41,7 @@ func (s *Service) Synchronize() error {
 	resp, err := s.backend.GetServicePropertiesWithResponse(ctx, s.serviceUUID)
 	if err != nil {
 		return err
-	}
-
-	if resp.JSON200 == nil {
+	} else if resp.JSON200 == nil {
 		return nil
 	}
 

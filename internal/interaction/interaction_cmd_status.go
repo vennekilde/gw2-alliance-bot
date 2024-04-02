@@ -2,6 +2,7 @@ package interaction
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -74,7 +75,11 @@ func (c *StatusCmd) onCommandStatus(s *discordgo.Session, event *discordgo.Inter
 		if err != nil {
 			onError(s, event, err)
 			return
+		} else if resp.JSON200 == nil {
+			onError(s, event, errors.New("unexpected response from the server"))
+			return
 		}
+
 		user := resp.JSON200
 		c.sendFollowupStatusMessage(s, event, memberID, member, user)
 	}

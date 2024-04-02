@@ -99,11 +99,14 @@ func (b *Bot) Start() {
 		ctx := context.Background()
 		resp, err := b.backend.GetPlatformUserWithResponse(ctx, backend.PlatformID, event.Member.User.ID, &api.GetPlatformUserParams{})
 		if err != nil {
-			zap.L().Error("unable to get verification status for member", zap.Any("member", event.Member), zap.Error(err))
+			zap.L().Error("unable to get verification status for member", zap.Any("member", event.Member), zap.Any("resp", resp), zap.Error(err))
+			return
+		} else if resp.JSON200 == nil {
 			return
 		}
 
 		b.guildRoleHandler.CheckRoles(event.GuildID, event.Member, resp.JSON200.Accounts)
+		b.guildRoleHandler.CheckGuildTags(event.GuildID, event.Member)
 		b.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, resp.JSON200.Accounts, resp.JSON200.Bans)
 	})
 
@@ -153,11 +156,9 @@ func (b *Bot) beginBackendSync() {
 
 					resp, err := b.backend.GetPlatformUserWithResponse(ctx, backend.PlatformID, member.User.ID, &api.GetPlatformUserParams{})
 					if err != nil {
-						zap.L().Error("unable to get verification status for member", zap.Any("member", member), zap.Error(err))
+						zap.L().Error("unable to get verification status for member", zap.Any("member", member), zap.Any("resp", resp), zap.Error(err))
 						continue
-					}
-
-					if resp.JSON200 == nil {
+					} else if resp.JSON200 == nil {
 						continue
 					}
 					// Ensure user has correct roles

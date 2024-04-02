@@ -2,6 +2,7 @@ package interaction
 
 import (
 	"context"
+	"errors"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
@@ -55,6 +56,9 @@ func (c *RefreshCmd) onRefresh(s *discordgo.Session, event *discordgo.Interactio
 		resp, err := c.backend.PostPlatformUserRefreshWithResponse(ctx, backend.PlatformID, memberID)
 		if err != nil {
 			onError(s, event, err)
+			return
+		} else if resp.JSON200 == nil {
+			onError(s, event, errors.New("unexpected response from the server"))
 			return
 		}
 
