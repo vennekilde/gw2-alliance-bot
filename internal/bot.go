@@ -126,13 +126,17 @@ func (b *Bot) beginBackendSync() {
 			ctx := context.Background()
 			resp, err := b.backend.GetPlatformUserUpdatesWithResponse(ctx, 2, &api.GetPlatformUserUpdatesParams{})
 
-			var update *api.User
-			if resp != nil && resp.JSON200 != nil {
-				update = resp.JSON200
-			} else {
+			if err != nil || resp.JSON500 != nil {
+				zap.L().Error("unable to get verification update", zap.Any("resp", resp), zap.Any("err", err))
 				time.Sleep(10 * time.Second)
+				continue
 			}
-			zap.L().Info("received verification update", zap.Any("update", update), zap.Any("err", err))
+
+			if resp.StatusCode() == 408 {
+				continue
+			}
+
+			zap.L().Info("received verification update", zap.Any("update", resp.JSON200), zap.Any("err", err))
 		}
 	}()
 
