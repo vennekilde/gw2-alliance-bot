@@ -86,6 +86,8 @@ func NewInteractions(discord *discordgo.Session, cache *discord.Cache, service *
 
 func (c *Interactions) onInteraction(s *discordgo.Session, event *discordgo.InteractionCreate) {
 	user := determineUser(event)
+	zap.L().Info("received interaction", zap.Any("event", event), zap.Any("user", user))
+
 	if !c.activeForUser(user.ID) {
 		return
 	}

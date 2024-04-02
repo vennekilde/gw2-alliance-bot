@@ -12,12 +12,13 @@ import (
 const PlatformID = 2
 
 const (
-	SettingWvWWorld        = "wvw_world"
-	SettingPrimaryRole     = "wvw_primary_role"
-	SettingLinkedRole      = "wvw_linked_role"
-	SettingAssociatedRoles = "wvw_associated_roles"
-	SettingAccRepEnabled   = "acc_rep_nick"
-	SettingGuildCommonRole = "verification_role"
+	SettingWvWWorld           = "wvw_world"
+	SettingPrimaryRole        = "wvw_primary_role"
+	SettingLinkedRole         = "wvw_linked_role"
+	SettingAssociatedRoles    = "wvw_associated_roles"
+	SettingAccRepEnabled      = "acc_rep_nick"
+	SettingGuildTagRepEnabled = "guild_tag_rep_nick"
+	SettingGuildCommonRole    = "verification_role"
 )
 
 type Service struct {

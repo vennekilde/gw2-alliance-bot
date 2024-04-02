@@ -10,10 +10,14 @@ import (
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
 	"github.com/vennekilde/gw2-alliance-bot/internal/discord"
+	"github.com/vennekilde/gw2-alliance-bot/internal/nick"
 	"go.uber.org/zap"
 )
 
-var roleNameMatcher = regexp.MustCompile(`^\[\S{0,4}\] ([\S ]*)?\S`)
+var (
+	RegexRoleNameMatcher = regexp.MustCompile(`^\[\S{0,4}\] ([\S ]*)?\S`)
+	RegexGuildTagMatcher = regexp.MustCompile(`^\[(\S{0,4})\]`)
+)
 
 type GuildRoleHandler struct {
 	discord *discordgo.Session
@@ -28,6 +32,59 @@ func NewGuildRoleHandler(discord *discordgo.Session, cache *discord.Cache, guild
 		cache:   cache,
 		guilds:  guilds,
 		service: service,
+	}
+}
+
+func (g *GuildRoleHandler) CheckGuildTags(guildID string, member *discordgo.Member) {
+	// Collect list of guild roles from the member
+	guildRoleTags := make(map[string]string)
+	for _, roleID := range member.Roles {
+		role := g.cache.Servers[guildID].Roles[roleID]
+		if RegexRoleNameMatcher.MatchString(role.Name) {
+			guildRoleTags[role.Name] = RegexGuildTagMatcher.FindStringSubmatch(role.Name)[1]
+		}
+	}
+
+	// Get existing guild tag from member
+	var guildTag string
+	matches := RegexGuildTagMatcher.FindStringSubmatch(member.Nick)
+	if len(matches) > 1 {
+		guildTag = matches[1]
+	}
+
+	if len(guildRoleTags) == 0 {
+		if guildTag != "" {
+			// Remove guild tag from member
+			err := nick.RemoveGuildTagFromNick(g.discord, member)
+			if err != nil {
+				zap.L().Warn("unable to remove guild tag from member", zap.Any("member", member), zap.Error(err))
+			}
+		}
+		// No guild roles, no need to continue
+		return
+	}
+
+	// Check if guild tag is in guild roles
+	if guildTag != "" {
+		for _, tag := range guildRoleTags {
+			if tag == guildTag {
+				// Guild tag is in guild roles, no need to continue
+				return
+			}
+		}
+	}
+
+	// Set guild tag as nickname
+	for _, tag := range guildRoleTags {
+		// Just need to pick one
+		if tag != "" {
+			err := nick.SetGuildTagAsNick(g.discord, member, tag)
+			if err != nil {
+				zap.L().Warn("unable to set guild tag as nickname", zap.Any("member", member), zap.Error(err))
+				continue
+			}
+			break
+		}
 	}
 }
 
@@ -62,7 +119,7 @@ func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, 
 		}
 
 		role := serverCache.Roles[roleID]
-		if role != nil && roleNameMatcher.MatchString(role.Name) {
+		if role != nil && RegexRoleNameMatcher.MatchString(role.Name) {
 			// Check if user is allowed to have this guild role
 			isAllowedRole := false
 			for _, guildRole := range serverGuildRoles {
@@ -137,7 +194,7 @@ func (g *GuildRoleHandler) SetGuildRole(guildID string, userID string, roleID st
 		}
 
 		role := serverCache.Roles[memberRoleID]
-		if role != nil && roleNameMatcher.MatchString(role.Name) {
+		if role != nil && RegexRoleNameMatcher.MatchString(role.Name) {
 			err := g.discord.GuildMemberRoleRemove(guildID, userID, memberRoleID)
 			if err != nil {
 				zap.L().Error("unable to remove role from member", zap.String("guildID", guildID), zap.String("userID", userID), zap.Error(err))

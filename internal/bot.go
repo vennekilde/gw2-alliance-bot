@@ -14,6 +14,7 @@ import (
 	discord_internal "github.com/vennekilde/gw2-alliance-bot/internal/discord"
 	"github.com/vennekilde/gw2-alliance-bot/internal/guild"
 	"github.com/vennekilde/gw2-alliance-bot/internal/interaction"
+	"github.com/vennekilde/gw2-alliance-bot/internal/nick"
 	"github.com/vennekilde/gw2-alliance-bot/internal/world"
 	"go.uber.org/zap"
 )
@@ -178,6 +179,11 @@ func (b *Bot) beginBackendSync() {
 						zap.L().Error("unable to verify WvW roles", zap.Any("member", member), zap.Error(err))
 					}
 
+					if b.service.GetSetting(guild.ID, backend.SettingGuildTagRepEnabled) == "true" {
+						// Ensure user has correct guild tags
+						b.guildRoleHandler.CheckGuildTags(guild.ID, member)
+					}
+
 					if b.service.GetSetting(guild.ID, backend.SettingAccRepEnabled) == "true" {
 						accNames := make([]string, 0, len(resp.JSON200.Accounts))
 						for _, acc := range resp.JSON200.Accounts {
@@ -188,7 +194,7 @@ func (b *Bot) beginBackendSync() {
 						if len(accNames) > 0 {
 							// Cache guildID in member struct, as it is not by default
 							member.GuildID = guild.ID
-							err := interaction.SetAccsAsNick(b.discord, member, accNames)
+							err := nick.SetAccsAsNick(b.discord, member, accNames)
 							if err != nil {
 								zap.L().Error("unable to set nick name", zap.Any("member", member), zap.Error(err))
 							}

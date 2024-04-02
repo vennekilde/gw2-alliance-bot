@@ -22,6 +22,8 @@ const (
 	InteractionIDSettingsSetWvWAssociatedRoles = "setting-set-wvw-associated-roles"
 	InteractionIDSettingsSetAccRepEnable       = "setting-set-acc-rep-enable"
 	InteractionIDSettingsSetAccRepDisable      = "setting-set-acc-rep-disable"
+	InteractionIDSettingsSetGuildTagRepEnable  = "setting-set-guild-tag-rep-enable"
+	InteractionIDSettingsSetGuildTagRepDisable = "setting-set-guild-tag-rep-disable"
 	InteractionIDSettingsSetGuildCommonRole    = "setting-set-guild-common-role"
 )
 
@@ -45,6 +47,8 @@ func (c *SettingsCmd) Register(i *Interactions) {
 	i.interactions[InteractionIDSettingsSetWvWAssociatedRoles] = c.InteractSetAssociatedRoles
 	i.interactions[InteractionIDSettingsSetAccRepEnable] = c.InteractSetAccRep
 	i.interactions[InteractionIDSettingsSetAccRepDisable] = c.InteractSetAccRep
+	i.interactions[InteractionIDSettingsSetGuildTagRepEnable] = c.InteractSetGuildTagRep
+	i.interactions[InteractionIDSettingsSetGuildTagRepDisable] = c.InteractSetGuildTagRep
 	i.interactions[InteractionIDSettingsSetGuildCommonRole] = c.InteractSetGuildCommonRole
 
 	var permission int64 = discordgo.PermissionAdministrator
@@ -91,6 +95,16 @@ func (c *SettingsCmd) Register(i *Interactions) {
 				Content:    "Account rep will append the account name to a user's nickname",
 				Flags:      discordgo.MessageFlagsEphemeral,
 				Components: accRepComponents,
+			})
+			if err != nil {
+				onError(s, event, err)
+			}
+
+			guildTagRepComponents := c.buildGuildTagRepToggle(event.GuildID)
+			_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
+				Content:    "Prepend the user's represented guild tag to a user's nickname",
+				Flags:      discordgo.MessageFlagsEphemeral,
+				Components: guildTagRepComponents,
 			})
 			if err != nil {
 				onError(s, event, err)
@@ -232,6 +246,28 @@ func (c *SettingsCmd) buildAccountRepToggle(guildID string) []discordgo.MessageC
 	if accRepEnabled == "true" {
 		label = "Disable"
 		customID = InteractionIDSettingsSetAccRepDisable
+	}
+
+	return []discordgo.MessageComponent{
+		discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				&discordgo.Button{
+					Label:    label,
+					Style:    discordgo.PrimaryButton,
+					CustomID: customID,
+				},
+			},
+		},
+	}
+}
+
+func (c *SettingsCmd) buildGuildTagRepToggle(guildID string) []discordgo.MessageComponent {
+	accRepEnabled := c.service.GetSetting(guildID, backend.SettingGuildTagRepEnabled)
+	label := "Enable"
+	customID := InteractionIDSettingsSetGuildTagRepEnable
+	if accRepEnabled == "true" {
+		label = "Disable"
+		customID = InteractionIDSettingsSetGuildTagRepDisable
 	}
 
 	return []discordgo.MessageComponent{
@@ -457,9 +493,43 @@ func (c *SettingsCmd) InteractSetAccRep(s *discordgo.Session, event *discordgo.I
 	err = s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
 		Data: &discordgo.InteractionResponseData{
-			Content:    "Account rep will append the account name to a user's nickname",
+			Content:    event.Message.Content,
 			Flags:      discordgo.MessageFlagsEphemeral,
 			Components: c.buildAccountRepToggle(event.GuildID),
+		},
+	})
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+}
+
+func (c *SettingsCmd) InteractSetGuildTagRep(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	if event.GuildID == "" {
+		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
+			Content: "This command can only be used in a server",
+		})
+		return
+	}
+
+	value := "false"
+	if event.MessageComponentData().CustomID == InteractionIDSettingsSetGuildTagRepEnable {
+		value = "true"
+	}
+
+	ctx := context.Background()
+	err := c.service.SetSetting(ctx, event.GuildID, backend.SettingGuildTagRepEnabled, value)
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+
+	err = s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Content:    event.Message.Content,
+			Flags:      discordgo.MessageFlagsEphemeral,
+			Components: c.buildGuildTagRepToggle(event.GuildID),
 		},
 	})
 	if err != nil {

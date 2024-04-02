@@ -11,6 +11,7 @@ import (
 	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
 	"github.com/vennekilde/gw2-alliance-bot/internal/discord"
 	"github.com/vennekilde/gw2-alliance-bot/internal/guild"
+	"github.com/vennekilde/gw2-alliance-bot/internal/nick"
 	"github.com/vennekilde/gw2-alliance-bot/internal/world"
 	"go.uber.org/zap"
 )
@@ -192,7 +193,7 @@ func (c *RepCmd) handleRepFromStatus(s *discordgo.Session, event *discordgo.Inte
 	accRepEnabled := c.service.GetSetting(event.GuildID, backend.SettingAccRepEnabled)
 	if accRepEnabled == "true" {
 		if len(accounts) == 1 {
-			err := SetAccAsNick(s, event.Member, accounts[0].Name)
+			err := nick.SetAccAsNick(s, event.Member, accounts[0].Name)
 			if err != nil {
 				onError(s, event, err)
 			}
@@ -259,6 +260,16 @@ func (c *RepCmd) setRole(s *discordgo.Session, event *discordgo.InteractionCreat
 		return
 	}
 
+	if c.service.GetSetting(event.GuildID, backend.SettingGuildTagRepEnabled) == "true" {
+		// Set guild tag as nickname
+		tag := guild.RegexGuildTagMatcher.FindStringSubmatch(roleName)[1]
+		err = nick.SetGuildTagAsNick(s, event.Member, tag)
+		if err != nil {
+			onError(s, event, err)
+			return
+		}
+	}
+
 	_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
 		Flags: discordgo.MessageFlagsEphemeral,
 		Embeds: []*discordgo.MessageEmbed{
@@ -292,7 +303,7 @@ func (c *RepCmd) InteractSetNickByAccount(s *discordgo.Session, event *discordgo
 	}
 	accName := parts[1]
 
-	err := SetAccAsNick(s, event.Member, accName)
+	err := nick.SetAccAsNick(s, event.Member, accName)
 	if err != nil {
 		onError(s, event, err)
 		return

@@ -1,4 +1,4 @@
-package interaction
+package nick
 
 import (
 	"fmt"
@@ -12,7 +12,10 @@ import (
 const maxDiscordNickLen = 32
 const minNameLen = 4
 
-var accNickNameRegex = regexp.MustCompile(`(.*) \| .*\.\d{4}`)
+var (
+	RegexAccNickName      = regexp.MustCompile(`^(.*) \| .*\.\d{4}`)
+	RegexGuildTagNickName = regexp.MustCompile(`^!?(\[\S{2,4}\])? ?(.*)`)
+)
 
 func SetAccAsNick(discord *discordgo.Session, member *discordgo.Member, accName string) error {
 	var origName string
@@ -54,8 +57,8 @@ func SetAccsAsNick(discord *discordgo.Session, member *discordgo.Member, accName
 }
 
 func AppendAccName(origName string, accName string) string {
-	// Check if account name is already appended and discord it, if so
-	matches := accNickNameRegex.FindStringSubmatch(origName)
+	// Check if account name is already appended and discord it, if so remove it
+	matches := RegexAccNickName.FindStringSubmatch(origName)
 	if len(matches) > 1 {
 		origName = matches[1]
 	}
@@ -88,4 +91,62 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func RemoveGuildTagFromNick(discord *discordgo.Session, member *discordgo.Member) error {
+	var origName string
+	if member.Nick != "" {
+		origName = member.Nick
+	} else {
+		origName = member.User.Username
+	}
+
+	newNick := RemoveGuildTag(origName)
+	if newNick != member.Nick {
+		zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origName), zap.Int("length", utf8.RuneCountInString(newNick)))
+		return discord.GuildMemberNickname(member.GuildID, member.User.ID, newNick)
+	}
+	return nil
+}
+
+func SetGuildTagAsNick(discord *discordgo.Session, member *discordgo.Member, guildTag string) error {
+	var origName string
+	if member.Nick != "" {
+		origName = member.Nick
+	} else {
+		origName = member.User.Username
+	}
+
+	newNick := PrependGuildTag(origName, guildTag)
+	if newNick != member.Nick {
+		zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origName), zap.Int("length", utf8.RuneCountInString(newNick)))
+		return discord.GuildMemberNickname(member.GuildID, member.User.ID, newNick)
+	}
+	return nil
+}
+
+func PrependGuildTag(origName string, guildTag string) string {
+	addExclamation := origName[0] == '!'
+	origName = RemoveGuildTag(origName)
+
+	fmtStr := "[%s] %s"
+	if addExclamation {
+		fmtStr = "![%s] %s"
+	}
+	newName := fmt.Sprintf(fmtStr, guildTag, origName)
+	if utf8.RuneCountInString(newName) > maxDiscordNickLen {
+		newName = newName[:maxDiscordNickLen]
+	}
+
+	return newName
+}
+
+func RemoveGuildTag(origName string) string {
+	// Check if guild tag is already appended and discord it, if so remove it
+	matches := RegexGuildTagNickName.FindStringSubmatch(origName)
+	if len(matches) > 1 {
+		origName = matches[len(matches)-1]
+	}
+
+	return origName
 }
