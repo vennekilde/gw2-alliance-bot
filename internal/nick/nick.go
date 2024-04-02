@@ -132,6 +132,7 @@ func PrependGuildTag(origName string, guildTag string) string {
 	fmtStr := "[%s] %s"
 	if addExclamation {
 		fmtStr = "![%s] %s"
+		origName = origName[1:]
 	}
 	newName := fmt.Sprintf(fmtStr, guildTag, origName)
 	if utf8.RuneCountInString(newName) > maxDiscordNickLen {
