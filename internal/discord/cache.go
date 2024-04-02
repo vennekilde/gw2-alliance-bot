@@ -11,34 +11,45 @@ type Cache struct {
 }
 
 func NewCache(discord *discordgo.Session) *Cache {
-	r := &Cache{
+	cache := &Cache{
 		discord: discord,
 		Servers: make(map[string]*ServerCache),
 	}
 
+	discord.AddHandler(func(s *discordgo.Session, event *discordgo.Ready) {
+		cache.CacheAll()
+	})
+	discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildCreate) {
+		zap.L().Info("guild joined", zap.Any("event", event))
+		cache.CacheAll()
+	})
+	discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildDelete) {
+		zap.L().Info("guild left", zap.Any("event", event))
+		cache.CacheAll()
+	})
 	discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildRoleCreate) {
 		zap.L().Info("role created", zap.Any("event", event))
-		server := r.Servers[event.GuildID]
+		server := cache.Servers[event.GuildID]
 		if server != nil {
 			server.UpdateRole(event.Role)
 		}
 	})
 	discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildRoleUpdate) {
 		zap.L().Info("role updated", zap.Any("event", event))
-		server := r.Servers[event.GuildID]
+		server := cache.Servers[event.GuildID]
 		if server != nil {
 			server.UpdateRole(event.Role)
 		}
 	})
 	discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildRoleDelete) {
 		zap.L().Info("role deleted", zap.Any("event", event))
-		server := r.Servers[event.GuildID]
+		server := cache.Servers[event.GuildID]
 		if server != nil {
 			server.DeleteRole(event.RoleID)
 		}
 	})
 
-	return r
+	return cache
 }
 
 func (r *Cache) CacheAll() {

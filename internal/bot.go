@@ -91,8 +91,6 @@ func (b *Bot) Start() {
 
 	b.discord.AddHandler(func(s *discordgo.Session, event *discordgo.Ready) {
 		log.Printf("Logged in as: %v#%v", s.State.User.Username, s.State.User.Discriminator)
-		b.cache.CacheAll()
-
 		go b.beginBackendSync()
 	})
 
@@ -107,15 +105,6 @@ func (b *Bot) Start() {
 
 		b.guildRoleHandler.CheckRoles(event.GuildID, event.Member, resp.JSON200.Accounts)
 		b.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, resp.JSON200.Accounts, resp.JSON200.Bans)
-	})
-	b.discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildCreate) {
-		zap.L().Info("guild joined", zap.Any("event", event))
-		b.cache.CacheAll()
-	})
-
-	b.discord.AddHandler(func(s *discordgo.Session, event *discordgo.GuildDelete) {
-		zap.L().Info("guild left", zap.Any("event", event))
-		b.cache.CacheAll()
 	})
 
 	err := b.discord.Open()
