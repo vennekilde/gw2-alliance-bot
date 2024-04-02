@@ -142,11 +142,15 @@ func PrependGuildTag(origName string, guildTag string) string {
 }
 
 func RemoveGuildTag(origName string) string {
+	addExclamation := origName[0] == '!'
 	// Check if guild tag is already appended and discord it, if so remove it
 	matches := RegexGuildTagNickName.FindStringSubmatch(origName)
 	if len(matches) > 1 {
 		origName = matches[len(matches)-1]
 	}
 
+	if addExclamation {
+		origName = "!" + origName
+	}
 	return origName
 }
