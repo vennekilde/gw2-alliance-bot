@@ -103,7 +103,7 @@ func (c *RepCmd) buildGuildComponents(guildID string, account *api.Account) (com
 		return nil, nil, nil
 	}
 
-	roles := c.cache.Servers[guildID].Roles
+	roles := c.cache.Servers[guildID]
 
 	guilds, partial := c.guilds.GetGuildInfo(account.Guilds)
 	if partial {
@@ -112,25 +112,18 @@ func (c *RepCmd) buildGuildComponents(guildID string, account *api.Account) (com
 
 	components = make([]discordgo.MessageComponent, 0, len(guilds))
 	for _, guild := range guilds {
-		var role *discordgo.Role
-		for _, role = range roles {
-			if role.Name == fmt.Sprintf("[%s] %s", guild.Tag, guild.Name) {
-				goto guildIDFound
-			}
+		role := roles.FindRoleByTagAndName(fmt.Sprintf("[%s] %s", guild.Tag, guild.Name))
+		if role != nil {
+			lastRole = role
+			components = append(components, discordgo.Button{
+				// Label is what the user will see on the button.
+				Label: fmt.Sprintf("[%s] %s", guild.Tag, guild.Name),
+				// Style provides coloring of the button. There are not so many styles tho.
+				Style: discordgo.PrimaryButton,
+				// CustomID is a thing telling Discord which data to send when this button will be pressed.
+				CustomID: fmt.Sprintf("%s:%s:%s:%s", InteractionIDRepGuild, guild.ID, role.ID, role.Name),
+			})
 		}
-		// Guild not found
-		continue
-
-	guildIDFound:
-		lastRole = role
-		components = append(components, discordgo.Button{
-			// Label is what the user will see on the button.
-			Label: fmt.Sprintf("[%s] %s", guild.Tag, guild.Name),
-			// Style provides coloring of the button. There are not so many styles tho.
-			Style: discordgo.PrimaryButton,
-			// CustomID is a thing telling Discord which data to send when this button will be pressed.
-			CustomID: fmt.Sprintf("%s:%s:%s:%s", InteractionIDRepGuild, guild.ID, role.ID, role.Name),
-		})
 	}
 
 	return components, lastRole, nil

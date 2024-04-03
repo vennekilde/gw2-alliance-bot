@@ -1,6 +1,8 @@
 package discord
 
 import (
+	"sync"
+
 	"github.com/bwmarrin/discordgo"
 	"go.uber.org/zap"
 )
@@ -58,7 +60,7 @@ func (r *Cache) CacheAll() {
 		s := r.Servers[guild.ID]
 		if s == nil {
 			s = &ServerCache{
-				Roles: make(map[string]*discordgo.Role),
+				roles: make(map[string]*discordgo.Role),
 			}
 			r.Servers[guild.ID] = s
 		}
@@ -83,14 +85,64 @@ func (r *Cache) Cache(serverID string, server *ServerCache) error {
 	return nil
 }
 
+func (r *Cache) GetRole(serverID, roleID string) *discordgo.Role {
+	server := r.Servers[serverID]
+	if server == nil {
+		zap.L().Warn("server not found in cache", zap.String("server", serverID))
+		err := r.Cache(serverID, server)
+		if err != nil {
+			zap.L().Error("unable to cache server roles", zap.String("server", serverID), zap.Error(err))
+			return nil
+		}
+		server = r.Servers[serverID]
+		if server == nil {
+			zap.L().Error("unable to cache server roles", zap.String("server", serverID))
+			return nil
+		}
+	}
+
+	role := server.GetRole(roleID)
+	if role == nil {
+		err := r.Cache(serverID, server)
+		if err != nil {
+			zap.L().Error("unable to cache server roles", zap.String("server", serverID), zap.Error(err))
+			return nil
+		}
+		role = server.GetRole(roleID)
+	}
+	return role
+}
+
 type ServerCache struct {
-	Roles map[string]*discordgo.Role
+	m     sync.Mutex
+	roles map[string]*discordgo.Role
+}
+
+func (c *ServerCache) FindRoleByTagAndName(tagAndName string) *discordgo.Role {
+	c.m.Lock()
+	defer c.m.Unlock()
+	for _, role := range c.roles {
+		if role.Name == tagAndName {
+			return role
+		}
+	}
+	return nil
+}
+
+func (c *ServerCache) GetRole(roleID string) *discordgo.Role {
+	c.m.Lock()
+	defer c.m.Unlock()
+	return c.roles[roleID]
 }
 
 func (c *ServerCache) UpdateRole(role *discordgo.Role) {
-	c.Roles[role.ID] = role
+	c.m.Lock()
+	defer c.m.Unlock()
+	c.roles[role.ID] = role
 }
 
 func (c *ServerCache) DeleteRole(roleID string) {
-	delete(c.Roles, roleID)
+	c.m.Lock()
+	defer c.m.Unlock()
+	delete(c.roles, roleID)
 }

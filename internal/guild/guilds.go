@@ -44,12 +44,7 @@ func (g *GuildRoleHandler) CheckGuildTags(guildID string, member *discordgo.Memb
 	// Collect list of guild roles from the member
 	guildRoleTags := make(map[string]string)
 	for _, roleID := range member.Roles {
-		gCache, ok := g.cache.Servers[guildID]
-		if !ok {
-			zap.L().Warn("unable to find server cache", zap.String("guildID", guildID))
-			return
-		}
-		role := gCache.Roles[roleID]
+		role := g.cache.GetRole(guildID, roleID)
 		if role == nil {
 			zap.L().Warn("unable to find role in server cache", zap.String("roleID", roleID), zap.String("guildID", guildID), zap.Any("member", member))
 			return
@@ -118,12 +113,9 @@ func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, 
 			return // Partial failure, try again later
 		}
 		for _, guild := range gw2Guilds {
-			var role *discordgo.Role
-			for _, role = range serverCache.Roles {
-				if role.Name == fmt.Sprintf("[%s] %s", guild.Tag, guild.Name) {
-					serverGuildRoles = append(serverGuildRoles, role)
-					break
-				}
+			role := serverCache.FindRoleByTagAndName(fmt.Sprintf("[%s] %s", guild.Tag, guild.Name))
+			if role != nil {
+				serverGuildRoles = append(serverGuildRoles, role)
 			}
 		}
 	}
@@ -138,7 +130,7 @@ func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, 
 			continue
 		}
 
-		role := serverCache.Roles[roleID]
+		role := g.cache.GetRole(guildID, roleID)
 		if role != nil && RegexRoleNameMatcher.MatchString(role.Name) {
 			// Check if user is allowed to have this guild role
 			isAllowedRole := false
@@ -204,7 +196,6 @@ func (g *GuildRoleHandler) SetGuildRole(guildID string, userID string, roleID st
 	}
 
 	verificationRole := g.service.GetSetting(guildID, backend.SettingGuildCommonRole)
-	serverCache := g.cache.Servers[guildID]
 
 	// Remove other guild roles
 	for _, memberRoleID := range member.Roles {
@@ -213,7 +204,7 @@ func (g *GuildRoleHandler) SetGuildRole(guildID string, userID string, roleID st
 			continue
 		}
 
-		role := serverCache.Roles[memberRoleID]
+		role := g.cache.GetRole(guildID, memberRoleID)
 		if role != nil && RegexRoleNameMatcher.MatchString(role.Name) {
 			err := g.discord.GuildMemberRoleRemove(guildID, userID, memberRoleID)
 			if err != nil {
