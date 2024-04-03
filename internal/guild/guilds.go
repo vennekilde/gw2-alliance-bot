@@ -46,8 +46,8 @@ func (g *GuildRoleHandler) CheckGuildTags(guildID string, member *discordgo.Memb
 	for _, roleID := range member.Roles {
 		role := g.cache.GetRole(guildID, roleID)
 		if role == nil {
-			zap.L().Warn("unable to find role in server cache", zap.String("roleID", roleID), zap.String("guildID", guildID), zap.Any("member", member))
-			return
+			// For some reason, there exists roles that do not exist on the discord server, but the member appears to have it...
+			continue
 		}
 		if RegexRoleNameMatcher.MatchString(role.Name) {
 			guildRoleTags[role.Name] = RegexGuildTagMatcher.FindStringSubmatch(role.Name)[1]
