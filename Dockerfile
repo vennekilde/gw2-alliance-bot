@@ -1,5 +1,5 @@
 # argument for Go version
-ARG GO_VERSION=1.21
+ARG GO_VERSION=1.22
  
 # STAGE 1: building the executable
 FROM golang:${GO_VERSION}-alpine AS build
@@ -11,7 +11,7 @@ RUN go mod download
 COPY ./ ./
 # Build the executable
 RUN CGO_ENABLED=0 go build \
-    -installsuffix 'static' \
+    -ldflags="-w -s -buildid=" -trimpath \
     -o /app ./cmd/gw2-alliance-bot/main.go
  
 # STAGE 2: build the container to run
