@@ -13,18 +13,20 @@ import (
 )
 
 const (
-	InteractionIDSettingsSetWvWWorldDisable    = "setting-set-wvw-world-disable"
-	InteractionIDSettingsSetWvWWorldEU         = "setting-set-wvw-world-eu"
-	InteractionIDSettingsSetWvWWorldEUNational = "setting-set-wvw-world-eu-national"
-	InteractionIDSettingsSetWvWWorldNA         = "setting-set-wvw-world-na"
-	InteractionIDSettingsSetPrimaryWorldRole   = "setting-set-prmary-world-role"
-	InteractionIDSettingsSetLinkedWorldRole    = "setting-set-linked-world-role"
-	InteractionIDSettingsSetWvWAssociatedRoles = "setting-set-wvw-associated-roles"
-	InteractionIDSettingsSetAccRepEnable       = "setting-set-acc-rep-enable"
-	InteractionIDSettingsSetAccRepDisable      = "setting-set-acc-rep-disable"
-	InteractionIDSettingsSetGuildTagRepEnable  = "setting-set-guild-tag-rep-enable"
-	InteractionIDSettingsSetGuildTagRepDisable = "setting-set-guild-tag-rep-disable"
-	InteractionIDSettingsSetGuildCommonRole    = "setting-set-guild-common-role"
+	InteractionIDSettingsSetWvWWorldDisable           = "setting-set-wvw-world-disable"
+	InteractionIDSettingsSetWvWWorldEU                = "setting-set-wvw-world-eu"
+	InteractionIDSettingsSetWvWWorldEUNational        = "setting-set-wvw-world-eu-national"
+	InteractionIDSettingsSetWvWWorldNA                = "setting-set-wvw-world-na"
+	InteractionIDSettingsSetPrimaryWorldRole          = "setting-set-prmary-world-role"
+	InteractionIDSettingsSetLinkedWorldRole           = "setting-set-linked-world-role"
+	InteractionIDSettingsSetWvWAssociatedRoles        = "setting-set-wvw-associated-roles"
+	InteractionIDSettingsSetAccRepEnable              = "setting-set-acc-rep-enable"
+	InteractionIDSettingsSetAccRepDisable             = "setting-set-acc-rep-disable"
+	InteractionIDSettingsSetGuildTagRepEnable         = "setting-set-guild-tag-rep-enable"
+	InteractionIDSettingsSetGuildTagRepDisable        = "setting-set-guild-tag-rep-disable"
+	InteractionIDSettingsSetEnforceGuildTagRepEnable  = "setting-set-enforce-guild-tag-rep-enable"
+	InteractionIDSettingsSetEnforceGuildTagRepDisable = "setting-set-enforce-guild-tag-rep-disable"
+	InteractionIDSettingsSetGuildCommonRole           = "setting-set-guild-common-role"
 )
 
 type SettingsCmd struct {
@@ -49,6 +51,8 @@ func (c *SettingsCmd) Register(i *Interactions) {
 	i.interactions[InteractionIDSettingsSetAccRepDisable] = c.InteractSetAccRep
 	i.interactions[InteractionIDSettingsSetGuildTagRepEnable] = c.InteractSetGuildTagRep
 	i.interactions[InteractionIDSettingsSetGuildTagRepDisable] = c.InteractSetGuildTagRep
+	i.interactions[InteractionIDSettingsSetEnforceGuildTagRepEnable] = c.InteractSetEnforceGuildTagRep
+	i.interactions[InteractionIDSettingsSetEnforceGuildTagRepDisable] = c.InteractSetEnforceGuildTagRep
 	i.interactions[InteractionIDSettingsSetGuildCommonRole] = c.InteractSetGuildCommonRole
 
 	var permission int64 = discordgo.PermissionAdministrator
@@ -102,7 +106,7 @@ func (c *SettingsCmd) Register(i *Interactions) {
 
 			guildTagRepComponents := c.buildGuildTagRepToggle(event.GuildID)
 			_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-				Content:    "Prepend the user's represented guild tag to a user's nickname",
+				Content:    "Guild representation settings",
 				Flags:      discordgo.MessageFlagsEphemeral,
 				Components: guildTagRepComponents,
 			})
@@ -243,9 +247,11 @@ func (c *SettingsCmd) buildAccountRepToggle(guildID string) []discordgo.MessageC
 	accRepEnabled := c.service.GetSetting(guildID, backend.SettingAccRepEnabled)
 	label := "Enable"
 	customID := InteractionIDSettingsSetAccRepEnable
+	style := discordgo.SuccessButton
 	if accRepEnabled == "true" {
 		label = "Disable"
 		customID = InteractionIDSettingsSetAccRepDisable
+		style = discordgo.DangerButton
 	}
 
 	return []discordgo.MessageComponent{
@@ -253,7 +259,7 @@ func (c *SettingsCmd) buildAccountRepToggle(guildID string) []discordgo.MessageC
 			Components: []discordgo.MessageComponent{
 				&discordgo.Button{
 					Label:    label,
-					Style:    discordgo.PrimaryButton,
+					Style:    style,
 					CustomID: customID,
 				},
 			},
@@ -262,12 +268,24 @@ func (c *SettingsCmd) buildAccountRepToggle(guildID string) []discordgo.MessageC
 }
 
 func (c *SettingsCmd) buildGuildTagRepToggle(guildID string) []discordgo.MessageComponent {
-	accRepEnabled := c.service.GetSetting(guildID, backend.SettingGuildTagRepEnabled)
-	label := "Enable"
+	guildRepEnabled := c.service.GetSetting(guildID, backend.SettingGuildTagRepEnabled)
+	label := "Prepend guild tag to nickname"
 	customID := InteractionIDSettingsSetGuildTagRepEnable
-	if accRepEnabled == "true" {
-		label = "Disable"
+	style := discordgo.SuccessButton
+	if guildRepEnabled == "true" {
+		label = "Disable prepend guild tag to nickname"
 		customID = InteractionIDSettingsSetGuildTagRepDisable
+		style = discordgo.DangerButton
+	}
+
+	guildRepEnforcement := c.service.GetSetting(guildID, backend.SettingEnforceGuildRep)
+	labelEnforcement := "Enforce Guild Rep"
+	customIDEnforcement := InteractionIDSettingsSetEnforceGuildTagRepEnable
+	styleEnforcement := discordgo.SuccessButton
+	if guildRepEnforcement == "true" {
+		labelEnforcement = "Disable Enforcement"
+		customIDEnforcement = InteractionIDSettingsSetEnforceGuildTagRepDisable
+		styleEnforcement = discordgo.DangerButton
 	}
 
 	return []discordgo.MessageComponent{
@@ -275,8 +293,17 @@ func (c *SettingsCmd) buildGuildTagRepToggle(guildID string) []discordgo.Message
 			Components: []discordgo.MessageComponent{
 				&discordgo.Button{
 					Label:    label,
-					Style:    discordgo.PrimaryButton,
+					Style:    style,
 					CustomID: customID,
+				},
+			},
+		},
+		discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{
+				&discordgo.Button{
+					Label:    labelEnforcement,
+					Style:    styleEnforcement,
+					CustomID: customIDEnforcement,
 				},
 			},
 		},
@@ -519,6 +546,40 @@ func (c *SettingsCmd) InteractSetGuildTagRep(s *discordgo.Session, event *discor
 
 	ctx := context.Background()
 	err := c.service.SetSetting(ctx, event.GuildID, backend.SettingGuildTagRepEnabled, value)
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+
+	err = s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Content:    event.Message.Content,
+			Flags:      discordgo.MessageFlagsEphemeral,
+			Components: c.buildGuildTagRepToggle(event.GuildID),
+		},
+	})
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+}
+
+func (c *SettingsCmd) InteractSetEnforceGuildTagRep(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	if event.GuildID == "" {
+		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
+			Content: "This command can only be used in a server",
+		})
+		return
+	}
+
+	value := "false"
+	if event.MessageComponentData().CustomID == InteractionIDSettingsSetEnforceGuildTagRepEnable {
+		value = "true"
+	}
+
+	ctx := context.Background()
+	err := c.service.SetSetting(ctx, event.GuildID, backend.SettingEnforceGuildRep, value)
 	if err != nil {
 		onError(s, event, err)
 		return

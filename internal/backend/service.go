@@ -2,11 +2,14 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
+	"go.uber.org/zap"
 )
 
 const PlatformID = 2
@@ -18,10 +21,12 @@ const (
 	SettingAssociatedRoles    = "wvw_associated_roles"
 	SettingAccRepEnabled      = "acc_rep_nick"
 	SettingGuildTagRepEnabled = "guild_tag_rep_nick"
+	SettingEnforceGuildRep    = "enforce_guild_rep"
 	SettingGuildCommonRole    = "verification_role"
 )
 
 type Service struct {
+	m           sync.Mutex
 	backend     *api.ClientWithResponses
 	settings    map[string]map[string]string
 	serviceUUID string
@@ -42,7 +47,8 @@ func (s *Service) Synchronize() error {
 	if err != nil {
 		return err
 	} else if resp.JSON200 == nil {
-		return nil
+		zap.L().Error("unexpected response", zap.Any("response", resp))
+		return errors.New("unexpected response")
 	}
 
 	settings := make(map[string]map[string]string)
@@ -56,11 +62,16 @@ func (s *Service) Synchronize() error {
 		subjectSettings[property.Name] = property.Value
 	}
 
+	s.m.Lock()
+	defer s.m.Unlock()
 	s.settings = settings
 	return nil
 }
 
 func (s *Service) GetSetting(subject string, name string) string {
+	s.m.Lock()
+	defer s.m.Unlock()
+
 	subjectSettings, ok := s.settings[subject]
 	if !ok {
 		return ""
@@ -69,6 +80,9 @@ func (s *Service) GetSetting(subject string, name string) string {
 }
 
 func (s *Service) SetSetting(ctx context.Context, subject string, name string, value string) error {
+	s.m.Lock()
+	defer s.m.Unlock()
+
 	_, err := s.backend.PutServiceSubjectPropertyWithResponse(ctx, s.serviceUUID, subject, name, func(ctx context.Context, req *http.Request) error {
 		req.Body = io.NopCloser(strings.NewReader(value))
 		return nil
