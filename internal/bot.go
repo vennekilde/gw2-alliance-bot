@@ -84,6 +84,16 @@ func (b *Bot) Start() {
 		time.Sleep(5 * time.Second)
 	}
 
+	go func() {
+		for {
+			err := b.service.Synchronize()
+			if err != nil {
+				log.Printf("unable to synchronize service settings: %v", err)
+			}
+			time.Sleep(5 * time.Minute)
+		}
+	}()
+
 	b.worlds.Start()
 
 	b.discord.Identify.Intents = discordgo.IntentDirectMessages | discordgo.IntentGuildMembers | discordgo.IntentsGuilds
