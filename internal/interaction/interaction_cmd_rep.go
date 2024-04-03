@@ -78,13 +78,16 @@ func (c *RepCmd) onCommandRep(s *discordgo.Session, event *discordgo.Interaction
 	c.handleRepFromStatus(s, event, user, resp.JSON200.Accounts)
 }
 
-func (c *RepCmd) buildOverviewGuildComponents(guildID string, accounts []api.Account) (components []discordgo.MessageComponent, lastRole *discordgo.Role) {
+func (c *RepCmd) buildOverviewGuildComponents(guildID string, accounts []api.Account) (components []discordgo.MessageComponent, lastRole *discordgo.Role, err error) {
 	if len(accounts) == 0 {
-		return components, lastRole
+		return components, lastRole, nil
 	}
 
 	for _, account := range accounts {
-		comps, role := c.buildGuildComponents(guildID, &account)
+		comps, role, err := c.buildGuildComponents(guildID, &account)
+		if err != nil {
+			return nil, nil, err
+		}
 
 		if role != nil {
 			lastRole = role
@@ -92,20 +95,22 @@ func (c *RepCmd) buildOverviewGuildComponents(guildID string, accounts []api.Acc
 		components = append(components, comps...)
 	}
 
-	return components, lastRole
+	return components, lastRole, nil
 }
 
-func (c *RepCmd) buildGuildComponents(guildID string, account *api.Account) ([]discordgo.MessageComponent, *discordgo.Role) {
+func (c *RepCmd) buildGuildComponents(guildID string, account *api.Account) (components []discordgo.MessageComponent, lastRole *discordgo.Role, err error) {
 	if account.Guilds == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	roles := c.cache.Servers[guildID].Roles
 
-	zap.L().Info("fetching guilds")
-	guilds := c.guilds.GetGuildInfo(account.Guilds)
-	components := make([]discordgo.MessageComponent, 0, len(guilds))
-	var lastRole *discordgo.Role
+	guilds, partial := c.guilds.GetGuildInfo(account.Guilds)
+	if partial {
+		return nil, nil, errors.New("unable to fetch all guilds, likely an issue with the GW2 API, try again later")
+	}
+
+	components = make([]discordgo.MessageComponent, 0, len(guilds))
 	for _, guild := range guilds {
 		var role *discordgo.Role
 		for _, role = range roles {
@@ -128,7 +133,7 @@ func (c *RepCmd) buildGuildComponents(guildID string, account *api.Account) ([]d
 		})
 	}
 
-	return components, lastRole
+	return components, lastRole, nil
 }
 
 func (c *RepCmd) buildAccRepSelectMenu(accounts []api.Account) []discordgo.MessageComponent {
@@ -151,8 +156,16 @@ func (c *RepCmd) buildAccRepSelectMenu(accounts []api.Account) []discordgo.Messa
 }
 
 func (c *RepCmd) handleRepFromStatus(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User, accounts []api.Account) {
-	components, lastRole := c.buildOverviewGuildComponents(event.GuildID, accounts)
-	if len(components) == 1 {
+	components, lastRole, err := c.buildOverviewGuildComponents(event.GuildID, accounts)
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+
+	enforceGuildRep := c.service.GetSetting(event.GuildID, backend.SettingEnforceGuildRep) == "true"
+
+	// Just set role
+	if len(components) == 1 && enforceGuildRep {
 		c.setRole(s, event, user, lastRole.ID, lastRole.Name)
 	} else if len(components) == 0 {
 		// Only show if /rep was called directly

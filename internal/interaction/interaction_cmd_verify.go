@@ -154,7 +154,7 @@ func (c *VerifyCmd) Register(i *Interactions) {
 				var components []discordgo.MessageComponent
 				if event.Member != nil {
 					// Only invoked, if interaction happened inside a discord server
-					repComponents, _ := c.RepCmd.buildOverviewGuildComponents(event.GuildID, resp.JSON200.Accounts)
+					repComponents, _, _ := c.RepCmd.buildOverviewGuildComponents(event.GuildID, resp.JSON200.Accounts)
 					if len(repComponents) > 0 {
 						embeds = append(embeds,
 							&discordgo.MessageEmbed{
@@ -168,7 +168,7 @@ func (c *VerifyCmd) Register(i *Interactions) {
 								},
 							})
 						// Ensure user is in the verified group
-						repComponents, _ := c.RepCmd.buildOverviewGuildComponents(event.GuildID, resp.JSON200.Accounts)
+						repComponents, _, _ := c.RepCmd.buildOverviewGuildComponents(event.GuildID, resp.JSON200.Accounts)
 						err = c.RepCmd.guildRoleHandler.AddVerificationRole(event.GuildID, user.ID)
 						if err != nil {
 							onError(s, event, err)

@@ -146,7 +146,17 @@ func (b *Bot) beginBackendSync() {
 				continue
 			}
 
+			if resp.JSON200 == nil {
+				zap.L().Error("unexpected response from server", zap.Any("resp", resp))
+				time.Sleep(10 * time.Second)
+				continue
+			}
+
 			zap.L().Info("received verification update", zap.Any("update", resp.JSON200), zap.Any("err", err))
+			err = b.RefreshUser(resp.JSON200)
+			if err != nil {
+				zap.L().Error("unable to refresh user", zap.Any("user", resp.JSON200), zap.Error(err))
+			}
 		}
 	}()
 
@@ -175,31 +185,12 @@ func (b *Bot) beginBackendSync() {
 					} else if resp.JSON200 == nil {
 						continue
 					}
-					// Ensure user has correct roles
-					_ = b.guildRoleHandler.CheckRoles(guild.ID, member, resp.JSON200.Accounts)
 
-					err = b.wvw.VerifyWvWWorldRoles(guild.ID, member, resp.JSON200.Accounts, resp.JSON200.Bans)
+					// Cache guildID in member struct, as it is not by default
+					member.GuildID = guild.ID
+					err = b.RefreshMember(resp.JSON200, member)
 					if err != nil {
-						zap.L().Error("unable to verify WvW roles", zap.Any("member", member), zap.Error(err))
-					}
-
-					b.guildRoleHandler.CheckGuildTags(guild.ID, member)
-
-					if b.service.GetSetting(guild.ID, backend.SettingAccRepEnabled) == "true" {
-						accNames := make([]string, 0, len(resp.JSON200.Accounts))
-						for _, acc := range resp.JSON200.Accounts {
-							if acc.Expired == nil || !*acc.Expired {
-								accNames = append(accNames, acc.Name)
-							}
-						}
-						if len(accNames) > 0 {
-							// Cache guildID in member struct, as it is not by default
-							member.GuildID = guild.ID
-							err := nick.SetAccsAsNick(b.discord, member, accNames)
-							if err != nil {
-								zap.L().Error("unable to set nick name", zap.Any("member", member), zap.Error(err))
-							}
-						}
+						zap.L().Error("unable to refresh member", zap.Any("member", member), zap.Error(err))
 					}
 				}
 				// Check if we should fetch more members
@@ -210,6 +201,61 @@ func (b *Bot) beginBackendSync() {
 			}
 		}
 	}
+}
+
+func (b *Bot) RefreshUser(user *api.User) error {
+	for _, platformLink := range user.PlatformLinks {
+		if platformLink.PlatformID != backend.PlatformID {
+			continue
+		}
+
+		for _, guild := range b.discord.State.Guilds {
+			member, err := b.discord.GuildMember(guild.ID, platformLink.PlatformUserID)
+			if err != nil {
+				zap.L().Error("unable to get member", zap.String("guild id", guild.ID), zap.String("user id", platformLink.PlatformUserID), zap.Error(err))
+				continue
+			}
+
+			if member == nil {
+				continue
+			}
+
+			err = b.RefreshMember(user, member)
+			if err != nil {
+				zap.L().Error("unable to refresh member", zap.Any("member", member), zap.Error(err))
+			}
+		}
+	}
+	return nil
+}
+
+func (b *Bot) RefreshMember(user *api.User, member *discordgo.Member) error {
+	// Ensure user has correct roles
+	b.guildRoleHandler.CheckRoles(member.GuildID, member, user.Accounts)
+
+	err := b.wvw.VerifyWvWWorldRoles(member.GuildID, member, user.Accounts, user.Bans)
+	if err != nil {
+		zap.L().Error("unable to verify WvW roles", zap.Any("member", member), zap.Error(err))
+	}
+
+	b.guildRoleHandler.CheckGuildTags(member.GuildID, member)
+
+	if b.service.GetSetting(member.GuildID, backend.SettingAccRepEnabled) == "true" {
+		accNames := make([]string, 0, len(user.Accounts))
+		for _, acc := range user.Accounts {
+			if acc.Expired == nil || !*acc.Expired {
+				accNames = append(accNames, acc.Name)
+			}
+		}
+		if len(accNames) > 0 {
+			err := nick.SetAccsAsNick(b.discord, member, accNames)
+			if err != nil {
+				zap.L().Error("unable to set nick name", zap.Any("member", member), zap.Error(err))
+			}
+		}
+	}
+
+	return nil
 }
 
 func (b *Bot) Close() error {

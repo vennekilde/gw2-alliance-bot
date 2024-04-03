@@ -161,10 +161,14 @@ func (c *StatusCmd) buildOverviewStatusFields(accounts []api.Account) []*discord
 func (c *StatusCmd) buildStatusFields(account *api.Account) []*discordgo.MessageEmbedField {
 	fields := []*discordgo.MessageEmbedField{}
 	if account != nil {
-		guilds := c.ui.guilds.GetGuildInfo(account.Guilds)
+		guilds, _ := c.ui.guilds.GetGuildInfo(account.Guilds)
 		guildNames := make([]string, len(guilds))
 		for i, guild := range guilds {
-			guildNames[i] = fmt.Sprintf("[%s] %s", guild.Tag, guild.Name)
+			if guild.Name == "" {
+				guildNames[i] = fmt.Sprintf("%s - gw2 api error", guild.ID)
+			} else {
+				guildNames[i] = fmt.Sprintf("[%s] %s", guild.Tag, guild.Name)
+			}
 		}
 
 		if account.Id != "" {

@@ -137,7 +137,7 @@ func (ui *UIBuilder) buildLastUpdatedColumnField(accounts []api.Account) *discor
 func (ui *UIBuilder) buildGuildNamesColumnFields(accounts []api.Account) (fields []*discordgo.MessageEmbedField) {
 	for _, account := range accounts {
 		if account.Guilds != nil {
-			guilds := ui.guilds.GetGuildInfo(account.Guilds)
+			guilds, _ := ui.guilds.GetGuildInfo(account.Guilds)
 			for i, guild := range guilds {
 				if len(fields) >= i {
 					field := &discordgo.MessageEmbedField{
@@ -151,10 +151,16 @@ func (ui *UIBuilder) buildGuildNamesColumnFields(accounts []api.Account) (fields
 				}
 
 				field := fields[i]
-				if field.Value == "" {
-					field.Value = guild.Name
+				var name string
+				if guild.Name == "" {
+					name = fmt.Sprintf("%s - gw2 api error", guild.ID)
 				} else {
-					field.Value += "\n" + guild.Name
+					name = guild.Name
+				}
+				if field.Value == "" {
+					field.Value = name
+				} else {
+					field.Value += "\n" + name
 				}
 			}
 		}
@@ -233,11 +239,15 @@ func (ui *UIBuilder) buildGuildsField(accounts []api.Account) *discordgo.Message
 
 	for _, account := range accounts {
 		if account.Guilds != nil {
-			guilds := ui.guilds.GetGuildInfo(account.Guilds)
+			guilds, _ := ui.guilds.GetGuildInfo(account.Guilds)
 			for _, guild := range guilds {
 				if _, ok := guildIDSet[guild.ID]; !ok {
 					guildIDSet[guild.ID] = struct{}{}
-					guildNames = append(guildNames, fmt.Sprintf("[%s] %s", guild.Tag, guild.Name))
+					if guild.Name == "" {
+						guildNames = append(guildNames, fmt.Sprintf("%s - gw2 api error", guild.ID))
+					} else {
+						guildNames = append(guildNames, fmt.Sprintf("[%s] %s", guild.Tag, guild.Name))
+					}
 				}
 			}
 		}

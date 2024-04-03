@@ -102,16 +102,21 @@ func (g *GuildRoleHandler) CheckGuildTags(guildID string, member *discordgo.Memb
 	}
 }
 
-func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, accounts []api.Account) (serverGuildRoles []*discordgo.Role) {
+func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, accounts []api.Account) {
 	verificationRole := g.service.GetSetting(guildID, backend.SettingGuildCommonRole)
 	serverCache := g.cache.Servers[guildID]
+	serverGuildRoles := []*discordgo.Role{}
 
 	for _, account := range accounts {
 		if account.Guilds == nil {
 			continue
 		}
 
-		gw2Guilds := g.guilds.GetGuildInfo(account.Guilds)
+		gw2Guilds, partial := g.guilds.GetGuildInfo(account.Guilds)
+		if partial {
+			zap.L().Warn("partial failure fetching guilds", zap.Any("guilds", account.Guilds))
+			return // Partial failure, try again later
+		}
 		for _, guild := range gw2Guilds {
 			var role *discordgo.Role
 			for _, role = range serverCache.Roles {
@@ -126,6 +131,7 @@ func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, 
 	isVerified := len(serverGuildRoles) > 0
 	hasVerifiedRole := false
 	hasAGuildRole := false
+	// Check if user is a member of the guild that they have a role for
 	for _, roleID := range member.Roles {
 		if roleID == verificationRole {
 			hasVerifiedRole = true
@@ -152,7 +158,9 @@ func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, 
 		}
 	}
 
-	if !hasAGuildRole && len(serverGuildRoles) == 1 {
+	// Check if user should have a guild role
+	enforceGuildRep := g.service.GetSetting(guildID, backend.SettingEnforceGuildRep) == "true"
+	if !hasAGuildRole && len(serverGuildRoles) == 1 && enforceGuildRep {
 		// Add guild role, if member only has 1 possible guild role
 		err := g.discord.GuildMemberRoleAdd(guildID, member.User.ID, serverGuildRoles[0].ID)
 		if err != nil {
@@ -175,8 +183,6 @@ func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, 
 			}
 		}
 	}
-
-	return serverGuildRoles
 }
 
 func (g *GuildRoleHandler) AddVerificationRole(guildID string, userID string) error {
@@ -243,17 +249,21 @@ func NewGuilds() *Guilds {
 	}
 }
 
-func (g *Guilds) GetGuildInfo(guildIds *[]string) []*gw2api.Guild {
+func (g *Guilds) GetGuildInfo(guildIds *[]string) (guilds []*gw2api.Guild, partial bool) {
 	if guildIds == nil {
-		return nil
+		return nil, false
 	}
-	guilds := make([]*gw2api.Guild, 0, len(*guildIds))
+	guilds = make([]*gw2api.Guild, 0, len(*guildIds))
 	for _, id := range *guildIds {
 		guild, ok := g.cache[id]
 		if !ok {
 			// Fetch guild from gw2api
 			gw2ApiGuild, err := g.gw2API.Guild(id, false)
 			if err != nil {
+				partial = true
+				guilds = append(guilds, &gw2api.Guild{
+					ID: id,
+				})
 				zap.L().Warn("unable to fetch guild", zap.String("guild id", id), zap.Error(err))
 				if err.Error() == "too many requests" {
 					time.Sleep(5 * time.Second)
@@ -269,5 +279,5 @@ func (g *Guilds) GetGuildInfo(guildIds *[]string) []*gw2api.Guild {
 		}
 	}
 
-	return guilds
+	return guilds, partial
 }
