@@ -18,16 +18,14 @@ var (
 )
 
 func SetAccAsNick(discord *discordgo.Session, member *discordgo.Member, accName string) error {
-	var origName string
-	if member.Nick != "" {
-		origName = member.Nick
-	} else {
-		origName = member.User.Username
+	origNick, err := GetNickname(discord, member)
+	if err != nil {
+		return err
 	}
 
-	newNick := AppendAccName(origName, accName)
+	newNick := AppendAccName(origNick, accName)
 	if newNick != member.Nick {
-		zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origName), zap.Int("length", utf8.RuneCountInString(newNick)))
+		zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origNick), zap.Int("length", utf8.RuneCountInString(newNick)))
 		return discord.GuildMemberNickname(member.GuildID, member.User.ID, newNick)
 	}
 	return nil
@@ -38,21 +36,20 @@ func SetAccsAsNick(discord *discordgo.Session, member *discordgo.Member, accName
 		return nil
 	}
 
-	var newNick string
-	var origName string
-	if member.Nick != "" {
-		origName = member.Nick
-	} else {
-		origName = member.User.Username
+	origNick, err := GetNickname(discord, member)
+	if err != nil {
+		return err
 	}
+
+	var newNick string
 	for _, accName := range accNames {
-		newNick = AppendAccName(origName, accName)
+		newNick = AppendAccName(origNick, accName)
 		if newNick == member.Nick {
 			return nil
 		}
 	}
 
-	zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origName), zap.Int("length", utf8.RuneCountInString(newNick)))
+	zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origNick), zap.Int("length", utf8.RuneCountInString(newNick)))
 	return discord.GuildMemberNickname(member.GuildID, member.User.ID, newNick)
 }
 
@@ -93,33 +90,29 @@ func minInt(a, b int) int {
 	return b
 }
 
-func RemoveGuildTagFromNick(discord *discordgo.Session, member *discordgo.Member) error {
-	var origName string
-	if member.Nick != "" {
-		origName = member.Nick
-	} else {
-		origName = member.User.Username
+func RemoveGuildTagFromNick(discord *discordgo.Session, member *discordgo.Member) (err error) {
+	origNick, err := GetNickname(discord, member)
+	if err != nil {
+		return err
 	}
 
-	newNick := RemoveGuildTag(origName)
+	newNick := RemoveGuildTag(origNick)
 	if newNick != member.Nick {
-		zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origName), zap.Int("length", utf8.RuneCountInString(newNick)))
+		zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origNick), zap.Int("length", utf8.RuneCountInString(newNick)))
 		return discord.GuildMemberNickname(member.GuildID, member.User.ID, newNick)
 	}
 	return nil
 }
 
-func SetGuildTagAsNick(discord *discordgo.Session, member *discordgo.Member, guildTag string) error {
-	var origName string
-	if member.Nick != "" {
-		origName = member.Nick
-	} else {
-		origName = member.User.Username
+func SetGuildTagAsNick(discord *discordgo.Session, member *discordgo.Member, guildTag string) (err error) {
+	origNick, err := GetNickname(discord, member)
+	if err != nil {
+		return err
 	}
 
-	newNick := PrependGuildTag(origName, guildTag)
+	newNick := PrependGuildTag(origNick, guildTag)
 	if newNick != member.Nick {
-		zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origName), zap.Int("length", utf8.RuneCountInString(newNick)))
+		zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origNick), zap.Int("length", utf8.RuneCountInString(newNick)))
 		return discord.GuildMemberNickname(member.GuildID, member.User.ID, newNick)
 	}
 	return nil
@@ -154,4 +147,21 @@ func RemoveGuildTag(origName string) string {
 		origName = "!" + origName
 	}
 	return origName
+}
+
+func GetNickname(discord *discordgo.Session, member *discordgo.Member) (nick string, err error) {
+	if member.Nick == "" {
+		// Attempt to ensure nickname is actually fetched
+		member, err = discord.GuildMember(member.GuildID, member.User.ID)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if member.Nick != "" {
+		nick = member.Nick
+	} else {
+		nick = member.User.Username
+	}
+	return nick, nil
 }
