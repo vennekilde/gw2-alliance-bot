@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -75,7 +76,10 @@ func (c *StatusCmd) onCommandStatus(s *discordgo.Session, event *discordgo.Inter
 		if err != nil {
 			onError(s, event, err)
 			return
-		} else if resp.JSON200 == nil && resp.StatusCode() != 404 {
+		} else if resp.StatusCode() == http.StatusNotFound {
+			onError(s, event, errors.New("you are not verified"))
+			return
+		} else if resp.JSON200 == nil {
 			onError(s, event, errors.New("unexpected response from the server"))
 			return
 		}
