@@ -46,13 +46,14 @@ func (c *VerifyCmd) Register(i *Interactions) {
 		command: &discordgo.ApplicationCommand{
 			Name:        "verify",
 			Description: "Verify with your Guild Wars 2 API Key",
-			Options: []*discordgo.ApplicationCommandOption{
+			// Disabled, as users kept using it wrong
+			/*Options: []*discordgo.ApplicationCommandOption{
 				{
 					Type:        discordgo.ApplicationCommandOptionString,
 					Name:        "apikey",
 					Description: "Verify with your Guild Wars 2 API Key",
 				},
-			},
+			},*/
 		},
 		handler: func(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 			if len(event.ApplicationCommandData().Options) > 0 {
