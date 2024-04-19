@@ -261,7 +261,7 @@ func (c *VerifyCmd) setAPIKey(s *discordgo.Session, event *discordgo.Interaction
 			}
 		}
 
-		apiErr := errors.New(APIKeyErrorRegex.ReplaceAllString(resp.JSON500.SafeDisplayError, fmt.Sprintf("${1}\n${2}%s - %s${3}", apiKeyNamePrefix, code)))
+		apiErr := errors.New(APIKeyErrorRegex.ReplaceAllString(resp.JSON500.SafeDisplayError, fmt.Sprintf("${1}\n${2}%s%s${3}", apiKeyNamePrefix, code)))
 		onError(s, event, apiErr)
 		return
 	default:
