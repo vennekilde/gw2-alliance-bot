@@ -75,7 +75,7 @@ func (c *StatusCmd) onCommandStatus(s *discordgo.Session, event *discordgo.Inter
 		if err != nil {
 			onError(s, event, err)
 			return
-		} else if resp.JSON200 == nil {
+		} else if resp.JSON200 == nil && resp.StatusCode() != 404 {
 			onError(s, event, errors.New("unexpected response from the server"))
 			return
 		}
