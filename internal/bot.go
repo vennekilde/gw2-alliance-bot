@@ -193,11 +193,12 @@ func (b *Bot) beginBackendSync() {
 						zap.L().Error("unable to refresh member", zap.Any("member", member), zap.Error(err))
 					}
 				}
+				time.Sleep(time.Second * 5)
+
 				// Check if we should fetch more members
 				if len(members) == 0 || len(members) < limit {
 					break
 				}
-				time.Sleep(time.Second * 5)
 			}
 		}
 	}
