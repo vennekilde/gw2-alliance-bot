@@ -115,7 +115,11 @@ func (b *Bot) Start() {
 			return
 		}
 
-		b.guildRoleHandler.CheckRoles(event.GuildID, event.Member, resp.JSON200.Accounts)
+		var optAddedRole string
+		if event.BeforeUpdate != nil {
+			optAddedRole = findAddedRole(event.BeforeUpdate.Roles, event.Roles)
+		}
+		b.guildRoleHandler.CheckRoles(event.GuildID, event.Member, resp.JSON200.Accounts, optAddedRole)
 		b.guildRoleHandler.CheckGuildTags(event.GuildID, event.Member)
 		b.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, resp.JSON200.Accounts, resp.JSON200.Bans)
 	})
@@ -232,7 +236,7 @@ func (b *Bot) RefreshUser(user *api.User) error {
 
 func (b *Bot) RefreshMember(user *api.User, member *discordgo.Member) error {
 	// Ensure user has correct roles
-	b.guildRoleHandler.CheckRoles(member.GuildID, member, user.Accounts)
+	b.guildRoleHandler.CheckRoles(member.GuildID, member, user.Accounts, "")
 
 	err := b.wvw.VerifyWvWWorldRoles(member.GuildID, member, user.Accounts, user.Bans)
 	if err != nil {
@@ -261,4 +265,20 @@ func (b *Bot) RefreshMember(user *api.User, member *discordgo.Member) error {
 
 func (b *Bot) Close() error {
 	return b.discord.Close()
+}
+
+func findAddedRole(oldRoles []string, newRoles []string) string {
+	for _, newRole := range newRoles {
+		var found bool
+		for _, oldRole := range oldRoles {
+			if newRole == oldRole {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return newRole
+		}
+	}
+	return ""
 }

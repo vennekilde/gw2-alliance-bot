@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	RegexRoleNameMatcher = regexp.MustCompile(`^\[\S{0,4}\] ([\S ]*)?\S`)
+	RegexRoleNameMatcher = regexp.MustCompile(`^\[\S{0,4}\] ([\S ]*)?`)
 	RegexGuildTagMatcher = regexp.MustCompile(`^\[(\S{0,4})\]`)
 )
 
@@ -97,17 +97,17 @@ func (g *GuildRoleHandler) CheckGuildTags(guildID string, member *discordgo.Memb
 	}
 }
 
-func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, accounts []api.Account) {
+func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, accounts []api.Account, favoredGuildRoleID string) {
 	verificationRole := g.service.GetSetting(guildID, backend.SettingGuildCommonRole)
 	serverCache := g.cache.Servers[guildID]
-	serverGuildRoles := []*discordgo.Role{}
+	serverGuildRoles := map[string]*discordgo.Role{}
 
 	for _, account := range accounts {
 		if account.Guilds == nil {
 			continue
 		}
 
-		gw2Guilds, partial := g.guilds.GetGuildInfo(account.Guilds)
+		gw2Guilds, partial := g.guilds.GetGuildsInfo(account.Guilds)
 		if partial {
 			zap.L().Warn("partial failure fetching guilds", zap.Any("guilds", account.Guilds))
 			return // Partial failure, try again later
@@ -115,48 +115,76 @@ func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, 
 		for _, guild := range gw2Guilds {
 			role := serverCache.FindRoleByTagAndName(fmt.Sprintf("[%s] %s", guild.Tag, guild.Name))
 			if role != nil {
-				serverGuildRoles = append(serverGuildRoles, role)
+				serverGuildRoles[role.ID] = role
+				if favoredGuildRoleID == "" {
+					// Just need to pick one as the favored role
+					favoredGuildRoleID = role.ID
+				}
 			}
 		}
 	}
 
 	isVerified := len(serverGuildRoles) > 0
 	hasVerifiedRole := false
-	hasAGuildRole := false
+	var userGuildRoleID string
 	// Check if user is a member of the guild that they have a role for
+nextRole:
 	for _, roleID := range member.Roles {
+		// Flag if user has a the common guild verification role
 		if roleID == verificationRole {
 			hasVerifiedRole = true
 			continue
 		}
 
-		role := g.cache.GetRole(guildID, roleID)
-		if role != nil && RegexRoleNameMatcher.MatchString(role.Name) {
-			// Check if user is allowed to have this guild role
-			isAllowedRole := false
-			for _, guildRole := range serverGuildRoles {
-				if role.ID == guildRole.ID {
-					isAllowedRole = true
-					hasAGuildRole = true
-					break
+		// Check if the role the user has, is the one that got added
+		if roleID == favoredGuildRoleID {
+			if userGuildRoleID != "" {
+				// Remove role if user has multiple guild roles
+				err := g.discord.GuildMemberRoleRemove(guildID, member.User.ID, userGuildRoleID)
+				if err != nil {
+					zap.L().Warn("unable to remove role from member", zap.String("roleID", roleID), zap.Any("member", member), zap.Error(err))
 				}
 			}
-			if !isAllowedRole {
+			userGuildRoleID = roleID
+			continue
+		}
+
+		// Check if the role is a guild role
+		role := g.cache.GetRole(guildID, roleID)
+		if role != nil && RegexRoleNameMatcher.MatchString(role.Name) {
+			// Check if user already has a guild role
+			if userGuildRoleID != "" {
+				// Remove role, as user already has another guild role
 				err := g.discord.GuildMemberRoleRemove(guildID, member.User.ID, roleID)
 				if err != nil {
 					zap.L().Warn("unable to remove role from member", zap.String("roleID", roleID), zap.Any("member", member), zap.Error(err))
 				}
+				continue
+			}
+
+			// Check if user is allowed to have this guild role
+			for _, guildRole := range serverGuildRoles {
+				if role.ID == guildRole.ID {
+					userGuildRoleID = role.ID
+					continue nextRole
+				}
+			}
+
+			// Remove role, as user is not allowed to have it if we reach this point
+			err := g.discord.GuildMemberRoleRemove(guildID, member.User.ID, roleID)
+			if err != nil {
+				zap.L().Warn("unable to remove role from member", zap.String("roleID", roleID), zap.Any("member", member), zap.Error(err))
 			}
 		}
 	}
 
 	// Check if user should have a guild role
 	enforceGuildRep := g.service.GetSetting(guildID, backend.SettingEnforceGuildRep) == "true"
-	if !hasAGuildRole && len(serverGuildRoles) == 1 && enforceGuildRep {
+	if userGuildRoleID == "" && favoredGuildRoleID != "" && enforceGuildRep {
 		// Add guild role, if member only has 1 possible guild role
-		err := g.discord.GuildMemberRoleAdd(guildID, member.User.ID, serverGuildRoles[0].ID)
+		err := g.discord.GuildMemberRoleAdd(guildID, member.User.ID, favoredGuildRoleID)
 		if err != nil {
-			zap.L().Warn("unable to add role to member", zap.Any("role", serverGuildRoles[0].ID), zap.Any("member", member), zap.Error(err))
+			zap.L().Warn("unable to add role to member", zap.Any("role", favoredGuildRoleID), zap.Any("member", member), zap.Error(err))
 		}
 	}
 
@@ -240,29 +268,15 @@ func NewGuilds() *Guilds {
 	}
 }
 
-func (g *Guilds) GetGuildInfo(guildIds *[]string) (guilds []*gw2api.Guild, partial bool) {
+func (g *Guilds) GetGuildsInfo(guildIds *[]string) (guilds []*gw2api.Guild, partial bool) {
 	if guildIds == nil {
 		return nil, false
 	}
 	guilds = make([]*gw2api.Guild, 0, len(*guildIds))
 	for _, id := range *guildIds {
-		guild, ok := g.cache[id]
-		if !ok {
-			// Fetch guild from gw2api
-			gw2ApiGuild, err := g.gw2API.Guild(id, false)
-			if err != nil {
-				partial = true
-				guilds = append(guilds, &gw2api.Guild{
-					ID: id,
-				})
-				zap.L().Warn("unable to fetch guild", zap.String("guild id", id), zap.Error(err))
-				if err.Error() == "too many requests" {
-					time.Sleep(5 * time.Second)
-				}
-				continue
-			}
-			g.cache[id] = &gw2ApiGuild
-			guild = &gw2ApiGuild
+		guild, guildPartial := g.GetGuildInfo(id)
+		if guildPartial {
+			partial = true
 		}
 
 		if guild != nil {
@@ -271,4 +285,30 @@ func (g *Guilds) GetGuildInfo(guildIds *[]string) (guilds []*gw2api.Guild, parti
 	}
 
 	return guilds, partial
+}
+
+func (g *Guilds) GetGuildInfo(guildId string) (guild *gw2api.Guild, partial bool) {
+	if guildId == "" {
+		return nil, false
+	}
+
+	guild, ok := g.cache[guildId]
+	if !ok {
+		// Fetch guild from gw2api
+		gw2ApiGuild, err := g.gw2API.Guild(guildId, false)
+		if err != nil {
+			guild = &gw2api.Guild{
+				ID: guildId,
+			}
+			zap.L().Warn("unable to fetch guild", zap.String("guild id", guildId), zap.Error(err))
+			if err.Error() == "too many requests" {
+				time.Sleep(5 * time.Second)
+			}
+			return guild, true
+		}
+		g.cache[guildId] = &gw2ApiGuild
+		guild = &gw2ApiGuild
+	}
+
+	return guild, partial
 }

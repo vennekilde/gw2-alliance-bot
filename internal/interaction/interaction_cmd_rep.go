@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/MrGunflame/gw2api"
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
@@ -79,36 +80,50 @@ func (c *RepCmd) onCommandRep(s *discordgo.Session, event *discordgo.Interaction
 }
 
 func (c *RepCmd) buildOverviewGuildComponents(guildID string, accounts []api.Account) (components []discordgo.MessageComponent, lastRole *discordgo.Role, err error) {
-	if len(accounts) == 0 {
-		return components, lastRole, nil
-	}
-
-	for _, account := range accounts {
-		comps, role, err := c.buildGuildComponents(guildID, &account)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		if role != nil {
-			lastRole = role
-		}
-		components = append(components, comps...)
-	}
-
-	return components, lastRole, nil
+	return c.buildGuildComponentsFromAccounts(guildID, accounts)
 }
 
-func (c *RepCmd) buildGuildComponents(guildID string, account *api.Account) (components []discordgo.MessageComponent, lastRole *discordgo.Role, err error) {
-	if account.Guilds == nil {
+func (c *RepCmd) buildGuildComponentsFromAccounts(guildID string, accounts []api.Account) (components []discordgo.MessageComponent, lastRole *discordgo.Role, err error) {
+	if len(accounts) == 0 {
+		return nil, nil, nil
+	}
+
+	guilds, err := c.GetAllGuildsFromAccounts(accounts)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return c.buildGuildComponents(guildID, guilds)
+}
+
+func (c *RepCmd) GetAllGuildsFromAccounts(accounts []api.Account) ([]*gw2api.Guild, error) {
+	guilds := []*gw2api.Guild{}
+	for _, account := range accounts {
+		accGuilds, partial := c.guilds.GetGuildsInfo(account.Guilds)
+		if partial {
+			return nil, errors.New("unable to fetch all guilds, likely an issue with the GW2 API, try again later")
+		}
+
+		// Add accGuilds to guilds, if they are not already there
+	skipGuild:
+		for _, guild := range accGuilds {
+			for _, totalGuild := range guilds {
+				if totalGuild.ID == guild.ID {
+					continue skipGuild
+				}
+			}
+			guilds = append(guilds, guild)
+		}
+	}
+	return guilds, nil
+}
+
+func (c *RepCmd) buildGuildComponents(guildID string, guilds []*gw2api.Guild) (components []discordgo.MessageComponent, lastRole *discordgo.Role, err error) {
+	if len(guilds) == 0 {
 		return nil, nil, nil
 	}
 
 	roles := c.cache.Servers[guildID]
-
-	guilds, partial := c.guilds.GetGuildInfo(account.Guilds)
-	if partial {
-		return nil, nil, errors.New("unable to fetch all guilds, likely an issue with the GW2 API, try again later")
-	}
 
 	components = make([]discordgo.MessageComponent, 0, len(guilds))
 	for _, guild := range guilds {
@@ -121,7 +136,7 @@ func (c *RepCmd) buildGuildComponents(guildID string, account *api.Account) (com
 				// Style provides coloring of the button. There are not so many styles tho.
 				Style: discordgo.PrimaryButton,
 				// CustomID is a thing telling Discord which data to send when this button will be pressed.
-				CustomID: fmt.Sprintf("%s:%s:%s:%s", InteractionIDRepGuild, guild.ID, role.ID, role.Name),
+				CustomID: fmt.Sprintf("%s:%s:%s", InteractionIDRepGuild, guild.ID, role.ID),
 			})
 		}
 	}
@@ -159,7 +174,7 @@ func (c *RepCmd) handleRepFromStatus(s *discordgo.Session, event *discordgo.Inte
 
 	// Just set role
 	if len(components) == 1 && enforceGuildRep {
-		c.setRole(s, event, user, lastRole.ID, lastRole.Name)
+		c.setRoleByName(s, event, user, lastRole.Name)
 	} else if len(components) == 0 {
 		// Only show if /rep was called directly
 		if event.Type == discordgo.InteractionApplicationCommand || event.Type == discordgo.InteractionApplicationCommandAutocomplete {
@@ -222,11 +237,6 @@ func (c *RepCmd) handleRepFromStatus(s *discordgo.Session, event *discordgo.Inte
 func (c *RepCmd) onSetRole(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 	ctx := context.Background()
 
-	parts := strings.Split(event.MessageComponentData().CustomID, ":")
-	guildID := parts[1]
-	roleID := parts[2]
-	roleName := parts[3]
-
 	err := s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
 		Data: &discordgo.InteractionResponseData{
@@ -237,33 +247,53 @@ func (c *RepCmd) onSetRole(s *discordgo.Session, event *discordgo.InteractionCre
 		zap.L().Error("unable to respond to interaction", zap.Any("session", s), zap.Any("event", event), zap.Error(err))
 	}
 
-	// Ensure user still has the guild
 	resp, err := c.backend.GetPlatformUserWithResponse(ctx, backend.PlatformID, user.ID, &api.GetPlatformUserParams{})
 	if err != nil {
 		onError(s, event, err)
 		return
+	} else if resp.JSON200 == nil {
+		onError(s, event, errors.New("unexpected response from the server"))
+		return
 	}
 
-	if resp.JSON200 != nil && resp.JSON200.Accounts != nil {
-		for _, account := range resp.JSON200.Accounts {
-			if account.Guilds == nil {
-				continue
-			}
-			for _, accGuildID := range *account.Guilds {
-				if accGuildID == guildID {
-					c.setRole(s, event, user, roleID, roleName)
-					return
-				}
+	parts := strings.Split(event.MessageComponentData().CustomID, ":")
+	guildID := parts[1]
+
+	// Ensure user still has the guild
+	for _, account := range resp.JSON200.Accounts {
+		if account.Guilds == nil {
+			continue
+		}
+		for _, accGuildID := range *account.Guilds {
+			if accGuildID == guildID {
+				goto setRole
 			}
 		}
 	}
 
-	// If we reach this, then we failed
-	onError(s, event, fmt.Errorf("unable to verify you are still elligble to represent %s", roleName))
+	onError(s, event, fmt.Errorf("unable to verify you are still elligble to represent the guild"))
+	return
+
+setRole:
+	guild, partial := c.guilds.GetGuildInfo(guildID)
+	if partial || guild == nil {
+		onError(s, event, errors.New("unable to fetch guild info, try again later"))
+		return
+	}
+
+	roleName := fmt.Sprintf("[%s] %s", guild.Tag, guild.Name)
+	// Set role
+	c.setRoleByName(s, event, user, roleName)
 }
 
-func (c *RepCmd) setRole(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User, roleID string, roleName string) {
-	err := c.guildRoleHandler.SetGuildRole(event.GuildID, user.ID, roleID)
+func (c *RepCmd) setRoleByName(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User, roleName string) {
+	role := c.cache.GetRoleByName(event.GuildID, roleName)
+	if role == nil {
+		onError(s, event, fmt.Errorf("unable to find role with name: %s", roleName))
+		return
+	}
+
+	err := c.guildRoleHandler.SetGuildRole(event.GuildID, user.ID, role.ID)
 	if err != nil {
 		onError(s, event, err)
 		return

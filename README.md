@@ -28,7 +28,7 @@ Role assignment:
 
 The bot will automatically assign roles to users based on the guilds they are a member of. The roles must be named in the format of `[{GUILD_TAG}] {GUILD_NAME}`.
 
-As an example, if a user is a member of the guild with the tag `[TEST]` and the name `Test Guild`, the bot will assign the role `[TEST] Test Guild` to the user, if the role is created on the discord server.
+As an example, if a user is a member of the guild with the tag `[TEST]` and the name `Test Guild`, the bot will assign the role `[TEST] Test Guild` to the user, if the role exists on the discord server.
 
 ### Guild Verification Role Assignment
 

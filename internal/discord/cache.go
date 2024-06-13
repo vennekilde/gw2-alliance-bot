@@ -113,6 +113,43 @@ func (r *Cache) GetRole(serverID, roleID string) *discordgo.Role {
 	return role
 }
 
+func (r *Cache) GetRoleByName(serverID string, roleName string) *discordgo.Role {
+	server := r.Servers[serverID]
+	if server == nil {
+		zap.L().Warn("server not found in cache", zap.String("server", serverID))
+		err := r.Cache(serverID, server)
+		if err != nil {
+			zap.L().Error("unable to cache server roles", zap.String("server", serverID), zap.Error(err))
+			return nil
+		}
+		server = r.Servers[serverID]
+		if server == nil {
+			zap.L().Error("unable to cache server roles", zap.String("server", serverID))
+			return nil
+		}
+	}
+
+	for _, role := range server.roles {
+		if role.Name == roleName {
+			return role
+		}
+	}
+
+	err := r.Cache(serverID, server)
+	if err != nil {
+		zap.L().Error("unable to cache server roles", zap.String("server", serverID), zap.Error(err))
+		return nil
+	}
+
+	for _, role := range server.roles {
+		if role.Name == roleName {
+			return role
+		}
+	}
+
+	return nil
+}
+
 type ServerCache struct {
 	m     sync.Mutex
 	roles map[string]*discordgo.Role

@@ -165,7 +165,7 @@ func (c *StatusCmd) buildOverviewStatusFields(accounts []api.Account) []*discord
 func (c *StatusCmd) buildStatusFields(account *api.Account) []*discordgo.MessageEmbedField {
 	fields := []*discordgo.MessageEmbedField{}
 	if account != nil {
-		guilds, _ := c.ui.guilds.GetGuildInfo(account.Guilds)
+		guilds, _ := c.ui.guilds.GetGuildsInfo(account.Guilds)
 		guildNames := make([]string, len(guilds))
 		for i, guild := range guilds {
 			if guild.Name == "" {
