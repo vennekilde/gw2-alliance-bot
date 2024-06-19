@@ -35,6 +35,37 @@ func NewGuildRoleHandler(discord *discordgo.Session, cache *discord.Cache, guild
 	}
 }
 
+// GetMemberGuildFromRoles returns the guild the member is in, based on user's roles or nickname
+// Assumes the first role found with a guild tag is the guild the member is in
+func (g *GuildRoleHandler) GetMemberGuildFromRoles(member *discordgo.Member) *gw2api.Guild {
+	// Check if guild tag is in nickname
+	var tag string
+	matches := RegexGuildTagMatcher.FindStringSubmatch(member.Nick)
+	if len(matches) > 0 {
+		tag = matches[1]
+	}
+
+	var guild *gw2api.Guild
+	// Check each member role
+	for _, roleID := range member.Roles {
+		role := g.cache.GetRole(member.GuildID, roleID)
+		if role == nil {
+			continue
+		}
+
+		matches := RegexRoleNameMatcher.FindStringSubmatch(role.Name)
+		if len(matches) > 1 {
+			guild, _ = g.guilds.GetGuildInfoByName(matches[1])
+			// Return early, if the role name matches the guild tag in the nickname
+			if guild != nil && guild.Tag == tag {
+				break
+			}
+		}
+	}
+
+	return guild
+}
+
 func (g *GuildRoleHandler) CheckGuildTags(guildID string, member *discordgo.Member) {
 	if g.service.GetSetting(guildID, backend.SettingGuildTagRepEnabled) != "true" {
 		return
@@ -311,4 +342,16 @@ func (g *Guilds) GetGuildInfo(guildId string) (guild *gw2api.Guild, partial bool
 	}
 
 	return guild, partial
+}
+
+// GetGuildInfoByName returns the guild info by guild name
+// will only return a guild, if the guild has been fetched before
+func (g *Guilds) GetGuildInfoByName(guildName string) (guild *gw2api.Guild, partial bool) {
+	for _, guild := range g.cache {
+		if guild.Name == guildName {
+			return guild, false
+		}
+	}
+
+	return nil, false
 }

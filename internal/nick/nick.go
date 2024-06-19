@@ -31,28 +31,6 @@ func SetAccAsNick(discord *discordgo.Session, member *discordgo.Member, accName 
 	return nil
 }
 
-func SetAccsAsNick(discord *discordgo.Session, member *discordgo.Member, accNames []string) error {
-	if len(accNames) == 0 {
-		return nil
-	}
-
-	origNick, err := GetNickname(discord, member)
-	if err != nil {
-		return err
-	}
-
-	var newNick string
-	for _, accName := range accNames {
-		newNick = AppendAccName(origNick, accName)
-		if newNick == member.Nick {
-			return nil
-		}
-	}
-
-	zap.L().Info("set nickname", zap.String("guildID", member.GuildID), zap.String("nick", newNick), zap.String("old nick", origNick), zap.Int("length", utf8.RuneCountInString(newNick)))
-	return discord.GuildMemberNickname(member.GuildID, member.User.ID, newNick)
-}
-
 func AppendAccName(origName string, accName string) string {
 	// Check if account name is already appended and discord it, if so remove it
 	matches := RegexAccNickName.FindStringSubmatch(origName)

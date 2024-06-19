@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/MrGunflame/gw2api"
@@ -28,6 +29,7 @@ type Bot struct {
 	worlds           *world.Worlds
 	wvw              *world.WvW
 	token            string
+	guilds           *guild.Guilds
 	guildRoleHandler *guild.GuildRoleHandler
 	discord          *discordgo.Session
 
@@ -67,6 +69,7 @@ func NewBot(discordToken string, backendURL string, serviceUUID string, backendT
 		service:          service,
 		worlds:           worlds,
 		wvw:              wvw,
+		guilds:           guilds,
 		guildRoleHandler: guildRoleHandler,
 	}
 	b.interactions = interaction.NewInteractions(b.discord, b.cache, b.service, b.backend, guilds, guildRoleHandler, wvw, b.ActiveForUser)
@@ -246,14 +249,20 @@ func (b *Bot) RefreshMember(user *api.User, member *discordgo.Member) error {
 	b.guildRoleHandler.CheckGuildTags(member.GuildID, member)
 
 	if b.service.GetSetting(member.GuildID, backend.SettingAccRepEnabled) == "true" {
-		accNames := make([]string, 0, len(user.Accounts))
+		repGuild := b.guildRoleHandler.GetMemberGuildFromRoles(member)
+		var accName string
 		for _, acc := range user.Accounts {
 			if acc.Expired == nil || !*acc.Expired {
-				accNames = append(accNames, acc.Name)
+				accName = acc.Name
+				if repGuild != nil {
+					if slices.Contains(*acc.Guilds, repGuild.ID) {
+						break
+					}
+				}
 			}
 		}
-		if len(accNames) > 0 {
-			err := nick.SetAccsAsNick(b.discord, member, accNames)
+		if len(accName) > 0 {
+			err := nick.SetAccAsNick(b.discord, member, accName)
 			if err != nil {
 				zap.L().Error("unable to set nick name", zap.Any("member", member), zap.Error(err))
 			}
