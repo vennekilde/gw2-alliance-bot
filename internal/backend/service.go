@@ -23,6 +23,7 @@ const (
 	SettingGuildTagRepEnabled = "guild_tag_rep_nick"
 	SettingEnforceGuildRep    = "enforce_guild_rep"
 	SettingGuildCommonRole    = "verification_role"
+	SettingGuildVerifyRoles   = "guild_verify_roles"
 )
 
 type Service struct {
@@ -75,6 +76,33 @@ func (s *Service) GetSetting(subject string, name string) string {
 	subjectSettings, ok := s.settings[subject]
 	if !ok {
 		return ""
+	}
+	return subjectSettings[name]
+}
+
+func (s *Service) GetSettingSlice(subject string, name string) []string {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	subjectSettings, ok := s.settings[subject]
+	if !ok {
+		return nil
+	}
+
+	if subjectSettings[name] == "" {
+		return nil
+	}
+
+	return strings.Split(subjectSettings[name], ",")
+}
+
+func (s *Service) GetSettingDefault(subject string, name string, def string) string {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	subjectSettings, ok := s.settings[subject]
+	if !ok {
+		return def
 	}
 	return subjectSettings[name]
 }

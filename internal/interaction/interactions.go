@@ -71,7 +71,7 @@ func NewInteractions(discord *discordgo.Session, cache *discord.Cache, service *
 	verifyHandler := NewVerifyCmd(backend, c.ui, repHandler)
 	verifyHandler.Register(c)
 
-	settingsHandler := NewSettingsCmd(service)
+	settingsHandler := NewSettingsCmd(service, c.guilds)
 	settingsHandler.Register(c)
 
 	discord.AddHandler(func(s *discordgo.Session, event *discordgo.Ready) {

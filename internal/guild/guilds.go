@@ -3,6 +3,7 @@ package guild
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/MrGunflame/gw2api"
@@ -130,6 +131,9 @@ func (g *GuildRoleHandler) CheckGuildTags(guildID string, member *discordgo.Memb
 
 func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, accounts []api.Account, favoredGuildRoleID string) {
 	verificationRole := g.service.GetSetting(guildID, backend.SettingGuildCommonRole)
+	verifiedRoles := g.service.GetSettingSlice(guildID, backend.SettingGuildVerifyRoles)
+	isVerified := false
+
 	serverCache := g.cache.Servers[guildID]
 	serverGuildRoles := map[string]*discordgo.Role{}
 
@@ -151,11 +155,13 @@ func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, 
 					// Just need to pick one as the favored role
 					favoredGuildRoleID = role.ID
 				}
+				if len(verifiedRoles) == 0 || slices.Contains(verifiedRoles, role.ID) {
+					isVerified = true
+				}
 			}
 		}
 	}
 
-	isVerified := len(serverGuildRoles) > 0
 	hasVerifiedRole := false
 	var userGuildRoleID string
 	// Check if user is a member of the guild that they have a role for
@@ -354,4 +360,41 @@ func (g *Guilds) GetGuildInfoByName(guildName string) (guild *gw2api.Guild, part
 	}
 
 	return nil, false
+}
+
+// GetServerGuilds returns a list of guilds that the server has
+func (g *Guilds) GetServerGuilds(server *discordgo.Guild) (guilds []*gw2api.Guild) {
+	guilds = make([]*gw2api.Guild, 0)
+
+	for _, role := range server.Roles {
+		if RegexRoleNameMatcher.MatchString(role.Name) {
+			matches := RegexGuildTagMatcher.FindStringSubmatch(role.Name)
+			if len(matches) > 1 {
+				guild, _ := g.GetGuildInfoByName(matches[1])
+				if guild != nil {
+					guilds = append(guilds, guild)
+				}
+			}
+		}
+	}
+
+	return guilds
+}
+
+// GetGuildRoles returns a list of guild roles that the server has
+func (g *Guilds) GetGuildRoles(server *discordgo.Guild) (roles []*discordgo.Role) {
+	return g.GetGuildRolesFrom(server.Roles)
+}
+
+// GetGuildRoleFrom returns a list of guild roles from a list of roles
+func (g *Guilds) GetGuildRolesFrom(roles []*discordgo.Role) []*discordgo.Role {
+	subset := make([]*discordgo.Role, 0)
+
+	for _, role := range roles {
+		if RegexRoleNameMatcher.MatchString(role.Name) {
+			subset = append(subset, role)
+		}
+	}
+
+	return subset
 }

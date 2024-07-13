@@ -8,6 +8,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
+	"github.com/vennekilde/gw2-alliance-bot/internal/guild"
 	"github.com/vennekilde/gw2-alliance-bot/internal/world"
 	"go.uber.org/zap"
 )
@@ -27,15 +28,18 @@ const (
 	InteractionIDSettingsSetEnforceGuildTagRepEnable  = "setting-set-enforce-guild-tag-rep-enable"
 	InteractionIDSettingsSetEnforceGuildTagRepDisable = "setting-set-enforce-guild-tag-rep-disable"
 	InteractionIDSettingsSetGuildCommonRole           = "setting-set-guild-common-role"
+	InteractionIDSettingsSetGuildVerifyRoles          = "setting-set-guild-verify-roles"
 )
 
 type SettingsCmd struct {
 	service *backend.Service
+	guilds  *guild.Guilds
 }
 
-func NewSettingsCmd(service *backend.Service) *SettingsCmd {
+func NewSettingsCmd(service *backend.Service, guilds *guild.Guilds) *SettingsCmd {
 	return &SettingsCmd{
 		service: service,
+		guilds:  guilds,
 	}
 }
 
@@ -54,6 +58,7 @@ func (c *SettingsCmd) Register(i *Interactions) {
 	i.interactions[InteractionIDSettingsSetEnforceGuildTagRepEnable] = c.InteractSetEnforceGuildTagRep
 	i.interactions[InteractionIDSettingsSetEnforceGuildTagRepDisable] = c.InteractSetEnforceGuildTagRep
 	i.interactions[InteractionIDSettingsSetGuildCommonRole] = c.InteractSetGuildCommonRole
+	i.interactions[InteractionIDSettingsSetGuildVerifyRoles] = c.InteractSetGuildVerifyRoles
 
 	var permission int64 = discordgo.PermissionAdministrator
 	var permissionDM bool = false
@@ -115,7 +120,13 @@ func (c *SettingsCmd) Register(i *Interactions) {
 			}
 
 			currentCommonGuildRole := c.service.GetSetting(event.GuildID, backend.SettingGuildCommonRole)
-			guildCommonRoleComponents := buildGuildCommonRoleSelectMenu(currentCommonGuildRole)
+			currentGuildVerifyRoles := c.service.GetSettingSlice(event.GuildID, backend.SettingGuildVerifyRoles)
+			roles, err := s.GuildRoles(event.GuildID)
+			if err != nil {
+				onError(s, event, err)
+			}
+
+			guildCommonRoleComponents := c.buildGuildVerificationMenu(roles, currentCommonGuildRole, currentGuildVerifyRoles)
 			_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
 				Content:    "The common guild role will be added to all users that are also in a guild role",
 				Flags:      discordgo.MessageFlagsEphemeral,
@@ -310,16 +321,16 @@ func (c *SettingsCmd) buildGuildTagRepToggle(guildID string) []discordgo.Message
 	}
 }
 
-func buildGuildCommonRoleSelectMenu(currentCommonGuildRole string) []discordgo.MessageComponent {
-	minValues := 0
-	roles := discordgo.SelectMenu{
+func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, currentCommonGuildRole string, currentGuildVerifyRoles []string) []discordgo.MessageComponent {
+	zero := 0
+	rolesSelect := discordgo.SelectMenu{
 		MenuType:    discordgo.RoleSelectMenu,
 		CustomID:    InteractionIDSettingsSetGuildCommonRole,
 		Placeholder: "Select a common guild role",
-		MinValues:   &minValues,
+		MinValues:   &zero,
 	}
 	if currentCommonGuildRole != "" {
-		roles.DefaultValues = []discordgo.SelectMenuDefaultValue{
+		rolesSelect.DefaultValues = []discordgo.SelectMenuDefaultValue{
 			{
 				Type: discordgo.SelectMenuDefaultValueRole,
 				ID:   currentCommonGuildRole,
@@ -327,9 +338,46 @@ func buildGuildCommonRoleSelectMenu(currentCommonGuildRole string) []discordgo.M
 		}
 	}
 
+	guildsRoles := c.guilds.GetGuildRolesFrom(roles)
+	guildRolesOptions := make([]discordgo.SelectMenuOption, 0, len(guildsRoles))
+	for _, guild := range guildsRoles {
+		option := discordgo.SelectMenuOption{
+			Label: guild.Name,
+			Value: guild.ID,
+		}
+		for _, roleID := range currentGuildVerifyRoles {
+			if roleID == guild.ID {
+				option.Default = true
+				break
+			}
+		}
+		guildRolesOptions = append(guildRolesOptions, option)
+	}
+
+	guildRolesSelect := discordgo.SelectMenu{
+		MenuType:    discordgo.StringSelectMenu,
+		CustomID:    InteractionIDSettingsSetGuildVerifyRoles,
+		Placeholder: "Select guilds that will be verified with the common role",
+		MinValues:   &zero,
+		MaxValues:   len(guildRolesOptions),
+		Options:     guildRolesOptions,
+	}
+
+	if len(currentGuildVerifyRoles) > 0 {
+		guildRolesSelect.DefaultValues = make([]discordgo.SelectMenuDefaultValue, len(currentGuildVerifyRoles))
+		for i, roleID := range currentGuildVerifyRoles {
+			guildRolesSelect.DefaultValues[i] = discordgo.SelectMenuDefaultValue{
+				ID: roleID,
+			}
+		}
+	}
+
 	return []discordgo.MessageComponent{
 		discordgo.ActionsRow{
-			Components: []discordgo.MessageComponent{roles},
+			Components: []discordgo.MessageComponent{rolesSelect},
+		},
+		discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{guildRolesSelect},
 		},
 	}
 }
@@ -629,6 +677,59 @@ func (c *SettingsCmd) InteractSetGuildCommonRole(s *discordgo.Session, event *di
 			ID:   roleID,
 		},
 	}
+	err = s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Content:    event.Message.Content,
+			Flags:      discordgo.MessageFlagsEphemeral,
+			Components: event.Message.Components,
+		},
+	})
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+}
+
+func (c *SettingsCmd) InteractSetGuildVerifyRoles(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	if event.GuildID == "" {
+		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
+			Content: "This command can only be used in a server",
+		})
+		return
+	}
+
+	roleIds := event.MessageComponentData().Values
+	rolesStr := strings.Join(roleIds, ",")
+	ctx := context.Background()
+	err := c.service.SetSetting(ctx, event.GuildID, backend.SettingGuildVerifyRoles, rolesStr)
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+
+	menu := event.Message.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.SelectMenu)
+	menu.Options = []discordgo.SelectMenuOption{}
+	roles, err := s.GuildRoles(event.GuildID)
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+	guildRoles := c.guilds.GetGuildRolesFrom(roles)
+	for _, guild := range guildRoles {
+		option := discordgo.SelectMenuOption{
+			Label: guild.Name,
+			Value: guild.ID,
+		}
+		for _, roleID := range roleIds {
+			if roleID == guild.ID {
+				option.Default = true
+				break
+			}
+		}
+		menu.Options = append(menu.Options, option)
+	}
+
 	err = s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
 		Data: &discordgo.InteractionResponseData{
