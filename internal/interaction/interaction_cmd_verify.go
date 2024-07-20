@@ -21,6 +21,7 @@ const tmplAPIKeyInstructions = `Ensure the api key meets the following criteria:
 **Permissions**
 - Characters
 - Progression
+- WvW
 (See the image below)`
 
 type VerifyCmd struct {
