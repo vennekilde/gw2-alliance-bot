@@ -144,7 +144,7 @@ func (c *VerifyCmd) Register(i *Interactions) {
 							[]*discordgo.MessageEmbedField{
 								{
 									Name:  "Your Discord account is already linked with a Guild Wars 2 account",
-									Value: `If you wish the add another Guild Wars 2 account, you can follow the instructions posted above`,
+									Value: `If you wish to add another Guild Wars 2 account, you can follow the instructions posted above`,
 								},
 							},
 							fields...,
