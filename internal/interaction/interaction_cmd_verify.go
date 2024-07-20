@@ -91,7 +91,7 @@ func (c *VerifyCmd) Register(i *Interactions) {
 						},
 					},
 					Image: &discordgo.MessageEmbedImage{
-						URL: "https://i.imgur.com/wlIFMgR.png",
+						URL: "https://i.imgur.com/k4oy0jm.png",
 					},
 				},
 			}
@@ -204,7 +204,7 @@ func (c *VerifyCmd) openAPIKeyModal(s *discordgo.Session, event *discordgo.Inter
 			CustomID: InteractionIDSetAPIKey,
 			Flags:    discordgo.MessageFlagsEphemeral,
 			Title:    "Insert API Key",
-			Content:  "Create your api key at at https://account.arena.net/applications/create. Permissions: Characters & Progression",
+			Content:  "Create your api key at at https://account.arena.net/applications/create. Permissions: Characters, Progression & WvW",
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
