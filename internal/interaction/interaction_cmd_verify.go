@@ -46,7 +46,7 @@ func (c *VerifyCmd) Register(i *Interactions) {
 	i.addCommand(&Command{
 		command: &discordgo.ApplicationCommand{
 			Name:        "verify",
-			Description: "Verify with your Guild Wars 2 API Key",
+			Description: "Add one or more Gw2 API keys to your Discord account. You can link multiple Gw2 accounts.",
 			// Disabled, as users kept using it wrong
 			/*Options: []*discordgo.ApplicationCommandOption{
 				{
@@ -62,7 +62,6 @@ func (c *VerifyCmd) Register(i *Interactions) {
 				c.setAPIKey(s, event, user, apiKey)
 				return
 			}
-			ctx := context.Background()
 			code := GetAPIKeyCode(2, user.ID)
 
 			var apiKeyNamePrefix string
@@ -71,11 +70,6 @@ func (c *VerifyCmd) Register(i *Interactions) {
 					apiKeyNamePrefix = fmt.Sprintf("%s - ", guild.Name)
 					break
 				}
-			}
-
-			resp, err := c.backend.GetPlatformUserWithResponse(ctx, backend.PlatformID, user.ID, &api.GetPlatformUserParams{})
-			if err != nil {
-				onError(s, event, err)
 			}
 
 			embeds := []*discordgo.MessageEmbed{
@@ -97,7 +91,7 @@ func (c *VerifyCmd) Register(i *Interactions) {
 				},
 			}
 
-			_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
+			_, err := s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
 				Flags:  discordgo.MessageFlagsEphemeral,
 				Embeds: embeds,
 				Components: []discordgo.MessageComponent{
@@ -119,75 +113,6 @@ func (c *VerifyCmd) Register(i *Interactions) {
 			})
 			if err != nil {
 				onError(s, event, err)
-			}
-
-			if resp.StatusCode() != 404 && resp.JSON200 != nil {
-				var memberName string
-				if event.Member != nil && event.Member.Nick != "" {
-					memberName = event.Member.Nick
-				} else {
-					memberName = user.Username
-				}
-
-				fields := []*discordgo.MessageEmbedField{
-					{
-						Name:  "Discord",
-						Value: memberName,
-					},
-				}
-				fields = append(fields, c.ui.buildStatusFields(resp.JSON200)...)
-
-				embeds = []*discordgo.MessageEmbed{
-					{
-						Title: "Already Verified!",
-						Color: 0x57F287, // green
-						Fields: append(
-							[]*discordgo.MessageEmbedField{
-								{
-									Name:  "Your Discord account is already linked with a Guild Wars 2 account",
-									Value: `If you wish to add another Guild Wars 2 account, you can follow the instructions posted above`,
-								},
-							},
-							fields...,
-						),
-					},
-				}
-
-				var components []discordgo.MessageComponent
-				if event.Member != nil {
-					// Only invoked, if interaction happened inside a discord server
-					repComponents, _, _ := c.RepCmd.buildOverviewGuildComponents(event.GuildID, resp.JSON200.Accounts)
-					if len(repComponents) > 0 {
-						embeds = append(embeds,
-							&discordgo.MessageEmbed{
-								Title: "You can represent a guild on this server!",
-								Color: 0x3498DB, // blue
-								Fields: []*discordgo.MessageEmbedField{
-									{
-										Name:  `Your Guild Wars 2 account is in a guild represented on this server`,
-										Value: `Click on the guild you wish to represent below`,
-									},
-								},
-							})
-						// Ensure user is in the verified group
-						repComponents, _, _ := c.RepCmd.buildOverviewGuildComponents(event.GuildID, resp.JSON200.Accounts)
-
-						components = []discordgo.MessageComponent{
-							discordgo.ActionsRow{
-								Components: repComponents,
-							},
-						}
-					}
-				}
-
-				_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-					Flags:      discordgo.MessageFlagsEphemeral,
-					Embeds:     embeds,
-					Components: components,
-				})
-				if err != nil {
-					onError(s, event, err)
-				}
 			}
 		},
 	})
