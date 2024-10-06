@@ -14,6 +14,34 @@ import (
 )
 
 const (
+	PermissionAccount      = "account"
+	PermissionInventiories = "inventories"
+	PermissionCharacters   = "characters"
+	PermissionTradingPost  = "tradingpost"
+	PermissionWallet       = "wallet"
+	PermissionUnlocks      = "unlocks"
+	PermissionPvP          = "pvp"
+	PermissionWvW          = "wvw"
+	PermissionBuilds       = "builds"
+	PermissionProgression  = "progression"
+	PermissionGuilds       = "guilds"
+)
+
+var Permissions = []string{
+	PermissionAccount,
+	PermissionInventiories,
+	PermissionCharacters,
+	PermissionTradingPost,
+	PermissionWallet,
+	PermissionUnlocks,
+	PermissionPvP,
+	PermissionWvW,
+	PermissionBuilds,
+	PermissionProgression,
+	PermissionGuilds,
+}
+
+const (
 	InteractionIDSettingsSetWvWWorldDisable           = "setting-set-wvw-world-disable"
 	InteractionIDSettingsSetWvWWorldEU                = "setting-set-wvw-world-eu"
 	InteractionIDSettingsSetWvWWorldEUNational        = "setting-set-wvw-world-eu-national"
@@ -29,6 +57,7 @@ const (
 	InteractionIDSettingsSetEnforceGuildTagRepDisable = "setting-set-enforce-guild-tag-rep-disable"
 	InteractionIDSettingsSetGuildCommonRole           = "setting-set-guild-common-role"
 	InteractionIDSettingsSetGuildVerifyRoles          = "setting-set-guild-verify-roles"
+	InteractionIDSettingsSetAPIKeyPermissions         = "setting-set-api-key-permissions"
 )
 
 type SettingsCmd struct {
@@ -59,6 +88,7 @@ func (c *SettingsCmd) Register(i *Interactions) {
 	i.interactions[InteractionIDSettingsSetEnforceGuildTagRepDisable] = c.InteractSetEnforceGuildTagRep
 	i.interactions[InteractionIDSettingsSetGuildCommonRole] = c.InteractSetGuildCommonRole
 	i.interactions[InteractionIDSettingsSetGuildVerifyRoles] = c.InteractSetGuildVerifyRoles
+	i.interactions[InteractionIDSettingsSetAPIKeyPermissions] = c.InteractSetRequiredAPIKeyPermissions
 
 	var permission int64 = discordgo.PermissionAdministrator
 	var permissionDM bool = false
@@ -120,13 +150,14 @@ func (c *SettingsCmd) Register(i *Interactions) {
 			}
 
 			currentCommonGuildRole := c.service.GetSetting(event.GuildID, backend.SettingGuildCommonRole)
+			currentRequiredPermissions := c.service.GetSettingSlice(event.GuildID, backend.SettingGuildRequiredPermissions)
 			currentGuildVerifyRoles := c.service.GetSettingSlice(event.GuildID, backend.SettingGuildVerifyRoles)
 			roles, err := s.GuildRoles(event.GuildID)
 			if err != nil {
 				onError(s, event, err)
 			}
 
-			guildCommonRoleComponents := c.buildGuildVerificationMenu(roles, currentCommonGuildRole, currentGuildVerifyRoles)
+			guildCommonRoleComponents := c.buildGuildVerificationMenu(roles, currentCommonGuildRole, currentGuildVerifyRoles, currentRequiredPermissions)
 			_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
 				Content:    "The common guild role will be added to all users that are also in a guild role",
 				Flags:      discordgo.MessageFlagsEphemeral,
@@ -321,7 +352,7 @@ func (c *SettingsCmd) buildGuildTagRepToggle(guildID string) []discordgo.Message
 	}
 }
 
-func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, currentCommonGuildRole string, currentGuildVerifyRoles []string) []discordgo.MessageComponent {
+func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, currentCommonGuildRole string, currentGuildVerifyRoles []string, currentAPIKeyPermissions []string) []discordgo.MessageComponent {
 	zero := 0
 	rolesSelect := discordgo.SelectMenu{
 		MenuType:    discordgo.RoleSelectMenu,
@@ -372,12 +403,40 @@ func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, curren
 		}
 	}
 
+	permissionsOptions := make([]discordgo.SelectMenuOption, 0, len(Permissions))
+	for _, permission := range Permissions {
+		option := discordgo.SelectMenuOption{
+			Label: permission,
+			Value: permission,
+		}
+
+		for _, currentPermission := range currentAPIKeyPermissions {
+			if currentPermission == permission {
+				option.Default = true
+				break
+			}
+		}
+		permissionsOptions = append(permissionsOptions, option)
+	}
+
+	requiredAPIKeyPermissionsSelect := discordgo.SelectMenu{
+		MenuType:    discordgo.StringSelectMenu,
+		CustomID:    InteractionIDSettingsSetAPIKeyPermissions,
+		Placeholder: "Select required API key permissions",
+		MinValues:   &zero,
+		MaxValues:   len(permissionsOptions),
+		Options:     permissionsOptions,
+	}
+
 	return []discordgo.MessageComponent{
 		discordgo.ActionsRow{
 			Components: []discordgo.MessageComponent{rolesSelect},
 		},
 		discordgo.ActionsRow{
 			Components: []discordgo.MessageComponent{guildRolesSelect},
+		},
+		discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{requiredAPIKeyPermissionsSelect},
 		},
 	}
 }
@@ -723,6 +782,53 @@ func (c *SettingsCmd) InteractSetGuildVerifyRoles(s *discordgo.Session, event *d
 		}
 		for _, roleID := range roleIds {
 			if roleID == guild.ID {
+				option.Default = true
+				break
+			}
+		}
+		menu.Options = append(menu.Options, option)
+	}
+
+	err = s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Content:    event.Message.Content,
+			Flags:      discordgo.MessageFlagsEphemeral,
+			Components: event.Message.Components,
+		},
+	})
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+}
+
+func (c *SettingsCmd) InteractSetRequiredAPIKeyPermissions(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	if event.GuildID == "" {
+		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
+			Content: "This command can only be used in a server",
+		})
+		return
+	}
+
+	permissions := event.MessageComponentData().Values
+	permissionsStr := strings.Join(permissions, ",")
+	ctx := context.Background()
+	err := c.service.SetSetting(ctx, event.GuildID, backend.SettingGuildRequiredPermissions, permissionsStr)
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+
+	menu := event.Message.Components[2].(*discordgo.ActionsRow).Components[0].(*discordgo.SelectMenu)
+	menu.Options = []discordgo.SelectMenuOption{}
+	for _, permission := range Permissions {
+		option := discordgo.SelectMenuOption{
+			Label: permission,
+			Value: permission,
+		}
+		for _, currentPermission := range permissions {
+			if currentPermission == permission {
 				option.Default = true
 				break
 			}

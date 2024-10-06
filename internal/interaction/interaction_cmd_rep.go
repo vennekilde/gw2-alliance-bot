@@ -195,11 +195,6 @@ func (c *RepCmd) handleRepFromStatus(s *discordgo.Session, event *discordgo.Inte
 			}
 		}
 	} else {
-		err := c.guildRoleHandler.AddVerificationRole(event.GuildID, user.ID)
-		if err != nil {
-			onError(s, event, err)
-		}
-
 		_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
 			Content: "Pick guild to represent",
 			Flags:   discordgo.MessageFlagsEphemeral,

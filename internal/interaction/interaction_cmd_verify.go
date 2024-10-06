@@ -171,11 +171,6 @@ func (c *VerifyCmd) Register(i *Interactions) {
 							})
 						// Ensure user is in the verified group
 						repComponents, _, _ := c.RepCmd.buildOverviewGuildComponents(event.GuildID, resp.JSON200.Accounts)
-						err = c.RepCmd.guildRoleHandler.AddVerificationRole(event.GuildID, user.ID)
-						if err != nil {
-							onError(s, event, err)
-							return
-						}
 
 						components = []discordgo.MessageComponent{
 							discordgo.ActionsRow{
@@ -288,5 +283,17 @@ func (c *VerifyCmd) setAPIKey(s *discordgo.Session, event *discordgo.Interaction
 		return
 	}
 
+	// Check roles
+	resp2, err := c.backend.GetPlatformUserWithResponse(ctx, backend.PlatformID, user.ID, &api.GetPlatformUserParams{})
+	if err != nil {
+		onError(s, event, err)
+		return
+	} else if resp2.JSON200 == nil {
+		onError(s, event, errors.New("unexpected response from the server"))
+		return
+	}
+	c.RepCmd.guildRoleHandler.CheckRoles(event.GuildID, event.Member, resp2.JSON200.Accounts, "")
+
+	// Start guild selection
 	c.RepCmd.onCommandRep(s, event, user)
 }

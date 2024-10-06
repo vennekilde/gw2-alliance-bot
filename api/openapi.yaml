@@ -609,6 +609,8 @@ components:
             bun: ",nullzero,notnull,default:current_timestamp"
         id:
           type: string
+          x-oapi-codegen-extra-tags:
+            bun: ",pk"
         name:
           type: string
         world:
@@ -653,6 +655,13 @@ components:
           type: boolean
           x-oapi-codegen-extra-tags:
             bun: '-'
+        api_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/TokenInfo'
+          x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            bun: rel:has-many,join:id=account_id
     PlatformLink:
       type: object
       required:
@@ -681,7 +690,42 @@ components:
           type: integer
           format: int64
           x-go-name: UserID
-        
+    TokenInfo:
+      type: object
+      required:
+        - id
+        - name
+        - account_id
+        - permissions
+      properties:
+        db_created:
+          type: string
+          format: date-time
+          x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            bun: ",nullzero,notnull,default:current_timestamp,scanonly"
+        db_updated:
+          type: string
+          format: date-time
+          x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            bun: ",nullzero,notnull,default:current_timestamp"
+        last_success:
+          type: string
+          format: date-time
+          x-go-type-skip-optional-pointer: true
+        id:
+          type: string
+        name:
+          type: string
+        account_id:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+          x-go-type-skip-optional-pointer: true
+
     EphemeralAssociation:
       type: object
       properties:

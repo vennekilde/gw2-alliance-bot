@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/MrGunflame/gw2api"
@@ -156,7 +157,10 @@ func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, 
 					favoredGuildRoleID = role.ID
 				}
 				if len(verifiedRoles) == 0 || slices.Contains(verifiedRoles, role.ID) {
-					isVerified = true
+					// Ensure they are allowed to be verified
+					if g.CanHaveGuildVerifiedRole(guildID, account.ApiKeys) {
+						isVerified = true
+					}
 				}
 			}
 		}
@@ -242,16 +246,33 @@ nextRole:
 	}
 }
 
-func (g *GuildRoleHandler) AddVerificationRole(guildID string, userID string) error {
-	verificationRole := g.service.GetSetting(guildID, backend.SettingGuildCommonRole)
-	if verificationRole != "" {
-		err := g.discord.GuildMemberRoleAdd(guildID, userID, verificationRole)
-		if err != nil {
-			return err
+// CanHaveGuildVerifiedRole check if the user has the required API Key permissions to have the guild verification role on this server
+func (g *GuildRoleHandler) CanHaveGuildVerifiedRole(guildID string, apiKeys []api.TokenInfo) bool {
+	requiredPermissions := g.service.GetSettingSlice(guildID, backend.SettingGuildRequiredPermissions)
+	if len(requiredPermissions) == 0 {
+		return true
+	}
+
+	apiPermissions := make(map[string]struct{})
+	for _, apiKey := range apiKeys {
+		for _, permission := range apiKey.Permissions {
+			permission := strings.Split(permission, ",")
+			for _, p := range permission {
+				apiPermissions[p] = struct{}{}
+			}
 		}
 	}
 
-	return nil
+outer:
+	for _, requiredPermission := range requiredPermissions {
+		for permission := range apiPermissions {
+			if permission == requiredPermission {
+				continue outer
+			}
+		}
+		return false
+	}
+	return true
 }
 
 func (g *GuildRoleHandler) SetGuildRole(guildID string, userID string, roleID string) error {
