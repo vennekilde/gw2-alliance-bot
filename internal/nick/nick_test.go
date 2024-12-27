@@ -4,7 +4,44 @@ import (
 	"testing"
 
 	. "github.com/onsi/gomega"
+	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 )
+
+func TestHasAccountAsName(t *testing.T) {
+	g := NewGomegaWithT(t)
+	nick := "Name | Account Name.1234"
+	accounts := []api.Account{
+		{
+			Name: "Account Name.1234",
+		},
+	}
+	hasAccName := HasAccountAsName(nick, accounts)
+	g.Expect(hasAccName).To(BeTrue())
+}
+
+func TestHasAccountAsNameNoAccName(t *testing.T) {
+	g := NewGomegaWithT(t)
+	nick := "Name | Account Name.1234"
+	accounts := []api.Account{
+		{
+			Name: "Not Account Name.1235",
+		},
+	}
+	hasAccName := HasAccountAsName(nick, accounts)
+	g.Expect(hasAccName).To(BeFalse())
+}
+
+func TestHasAccountAsNameWithTruncate(t *testing.T) {
+	g := NewGomegaWithT(t)
+	nick := "Name | Name.1234"
+	accounts := []api.Account{
+		{
+			Name: "Account Name.1234",
+		},
+	}
+	hasAccName := HasAccountAsName(nick, accounts)
+	g.Expect(hasAccName).To(BeTrue())
+}
 
 func TestAppendAccName(t *testing.T) {
 	g := NewGomegaWithT(t)

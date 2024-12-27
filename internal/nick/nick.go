@@ -3,9 +3,11 @@ package nick
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 	"go.uber.org/zap"
 )
 
@@ -13,7 +15,7 @@ const maxDiscordNickLen = 32
 const minNameLen = 4
 
 var (
-	RegexAccNickName      = regexp.MustCompile(`^(.*) \| .*\.\d{4}`)
+	RegexAccNickName      = regexp.MustCompile(`^(.*) \| (.*\.\d{4})`)
 	RegexGuildTagNickName = regexp.MustCompile(`^!?(\[\S{2,4}\])? ?(.*)`)
 )
 
@@ -59,6 +61,23 @@ func AppendAccName(origName string, accName string) string {
 		}
 	}
 	return fmt.Sprintf("%s | %s", origName, accName)
+}
+
+func HasAccountAsName(name string, accounts []api.Account) bool {
+	// Check if account name is already appended and discord it, if so remove it
+	matches := RegexAccNickName.FindStringSubmatch(name)
+	if len(matches) <= 1 {
+		return false
+	}
+
+	accName := matches[2]
+	for _, acc := range accounts {
+		// Due to how the account name may be truncated, we need to check if the account name is a suffix of the name
+		if strings.HasSuffix(acc.Name, accName) {
+			return true
+		}
+	}
+	return false
 }
 
 func minInt(a, b int) int {

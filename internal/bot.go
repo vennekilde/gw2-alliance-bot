@@ -249,8 +249,20 @@ func (b *Bot) RefreshMember(user *api.User, member *discordgo.Member) error {
 	b.guildRoleHandler.CheckGuildTags(member.GuildID, member)
 
 	if b.service.GetSetting(member.GuildID, backend.SettingAccRepEnabled) == "true" {
-		repGuild := b.guildRoleHandler.GetMemberGuildFromRoles(member)
 		var accName string
+		repGuild := b.guildRoleHandler.GetMemberGuildFromRoles(member)
+
+		// Determine member name
+		name, err := nick.GetNickname(b.discord, member)
+		if err != nil {
+			zap.L().Error("unable to check if account name is already in nick", zap.Any("member", member), zap.Error(err))
+			goto skipAccName
+		}
+		// Check if account name is already in nick
+		if nick.HasAccountAsName(name, user.Accounts) {
+			goto skipAccName
+		}
+
 		for _, acc := range user.Accounts {
 			if acc.Expired == nil || !*acc.Expired {
 				accName = acc.Name
@@ -267,6 +279,7 @@ func (b *Bot) RefreshMember(user *api.User, member *discordgo.Member) error {
 				zap.L().Error("unable to set nick name", zap.Any("member", member), zap.Error(err))
 			}
 		}
+	skipAccName:
 	}
 
 	return nil
