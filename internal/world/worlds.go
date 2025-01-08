@@ -87,6 +87,50 @@ var WorldNames = map[int]World{
 	2301: {2301, "Baruch Bay [SP]"},
 }
 
+type Team struct {
+	ID                int
+	Name              string
+	WorldEquivalentID int
+}
+
+var TeamNames = map[int]Team{
+	// EU
+	12001: {12001, "Skrittsburgh", 2001},
+	12002: {12002, "Fotune's Vale", 2002},
+	12003: {12003, "Silent Woods", 2003},
+	12004: {12004, "Ettin's Back", 2004},
+	12005: {12005, "Domain of Anguish", 2005},
+	12006: {12006, "Palawadan", 2006},
+	12007: {12007, "Bloodstone Gulch", 2007},
+	12008: {12008, "Frost Citadel", 2008},
+	12009: {12009, "Dragrimmar", 2009},
+	12010: {12010, "Grenth's Door", 2010},
+	12011: {12011, "Mirror of Lyssa", 2011},
+	12012: {12012, "Melandru's Dome", 2012},
+	12013: {12013, "Kormir's Library", 2013},
+	12014: {12014, "Great House Aviary", 2014},
+	12015: {12015, "Bava Nisos", 2101},
+	12016: {12016, "Temple of Febe", 2102},
+	12017: {12017, "Gyala Hatchery", 2103},
+	12018: {12018, "Grekvelnn Burrows", 2104},
+	// NA
+	11001: {11001, "Moogooloo", 1001},
+	11002: {11002, "Rall's Rest", 1002},
+	11003: {11003, "Domain of Torment", 1003},
+	11004: {11004, "Yohlon Haven", 1004},
+	11005: {11005, "Tombs of Drascir", 1005},
+	11006: {11006, "Hall of Judgment", 1006},
+	11007: {11007, "Throne of Balthazar", 1007},
+	11008: {11008, "Dwayna's Temple", 1008},
+	11009: {11009, "Abbaddon's Prison", 1009},
+	11010: {11010, "Ruined Cathedral of Blood", 1010},
+	11011: {11011, "Lutgardis Conservatory", 1011},
+	11012: {11012, "Mosswood", 1012},
+	11013: {11013, "Mithric Cliffs", 1013},
+	11014: {11014, "Lagula's Kraal", 1014},
+	11015: {11015, "De Molish Post", 1015},
+}
+
 func WorldsSorted() []World {
 	worlds := make([]World, 0, len(WorldNames))
 	for _, world := range WorldNames {

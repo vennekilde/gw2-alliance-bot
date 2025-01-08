@@ -3,14 +3,11 @@ package interaction
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
-	"github.com/vennekilde/gw2-alliance-bot/internal/world"
 )
 
 type StatusCmd struct {
@@ -113,112 +110,4 @@ func (c *StatusCmd) sendFollowupStatusMessage(s *discordgo.Session, event *disco
 	if err != nil {
 		onError(s, event, err)
 	}
-}
-
-func (c *StatusCmd) buildAccountEmbeds(accounts []api.Account, bans []api.Ban) []*discordgo.MessageEmbed {
-	activeBan := api.ActiveBan(bans)
-
-	embeds := []*discordgo.MessageEmbed{}
-	for _, account := range accounts {
-		embed := c.buildAccountEmbed(account, activeBan != nil)
-		embeds = append(embeds, embed)
-	}
-
-	return embeds
-}
-
-func (c *StatusCmd) buildAccountEmbed(account api.Account, banned bool) *discordgo.MessageEmbed {
-	fields := c.buildStatusFields(&account)
-
-	embed := discordgo.MessageEmbed{
-		Color:       linkStatusColor(account.Expired, nil, banned, 0x3498DB, 0xED4245, 0x95A5A6), // blue, red, lightgrey
-		Description: linkStatus(account.Expired, nil, banned),
-		Fields:      fields,
-	}
-
-	if account.Name != "" {
-		embed.Title = account.Name
-	} else {
-		embed.Title = embed.Description
-		embed.Description = ""
-	}
-
-	/*if status.World != nil {
-		embed.Author = &discordgo.MessageEmbedAuthor{
-			Name: WorldNames[*status.World].Name,
-		}
-	}*/
-
-	return &embed
-}
-
-func (c *StatusCmd) buildOverviewStatusFields(accounts []api.Account) []*discordgo.MessageEmbedField {
-	fields := []*discordgo.MessageEmbedField{}
-
-	for _, account := range accounts {
-		fields = append(fields, c.buildStatusFields(&account)...)
-	}
-
-	return fields
-}
-
-func (c *StatusCmd) buildStatusFields(account *api.Account) []*discordgo.MessageEmbedField {
-	fields := []*discordgo.MessageEmbedField{}
-	if account != nil {
-		guilds, _ := c.ui.guilds.GetGuildsInfo(account.Guilds)
-		guildNames := make([]string, len(guilds))
-		for i, guild := range guilds {
-			if guild.Name == "" {
-				guildNames[i] = fmt.Sprintf("%s - gw2 api error", guild.ID)
-			} else {
-				guildNames[i] = fmt.Sprintf("[%s] %s", guild.Tag, guild.Name)
-			}
-		}
-
-		if account.Id != "" {
-			/*fields = append(fields,
-				&discordgo.MessageEmbedField{
-					Name:  "Account Name",
-					Value: status.Account.Name,
-				},
-			)*/
-
-			if len(guildNames) > 0 {
-				fields = append(fields,
-					&discordgo.MessageEmbedField{
-						Name:   "Guilds",
-						Value:  strings.Join(guildNames, "\n"),
-						Inline: true,
-					},
-				)
-			}
-		}
-	}
-
-	if account.World != 0 {
-		fields = append(fields,
-			&discordgo.MessageEmbedField{
-				Name:  "World",
-				Value: world.WorldNames[account.World].Name,
-			},
-		)
-	}
-
-	/*if status.Expires != nil {
-		var untilStr string
-		until := time.Until(*status.Expires)
-		if until.Hours() > 24 {
-			untilStr = fmt.Sprintf("%d days", int(until.Hours()/24))
-		} else {
-			untilStr = until.String()
-		}
-		fields = append(fields,
-			&discordgo.MessageEmbedField{
-				Name:  "Expires",
-				Value: untilStr,
-			},
-		)
-	}*/
-
-	return fields
 }

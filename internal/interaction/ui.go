@@ -45,11 +45,17 @@ func (ui *UIBuilder) buildAccountTableFields(user *api.User) []*discordgo.Messag
 	accColumn := ui.buildAccountNameColumnField(user.Accounts)
 	fields = append(fields, accColumn)
 
-	worldColumn := ui.buildWorldNameColumnField(user.Accounts)
-	fields = append(fields, worldColumn)
+	//worldColumn := ui.buildWorldNameColumnField(user.Accounts)
+	//fields = append(fields, worldColumn)
 
-	statusColumn := ui.buildStatusColumnField(user.Accounts, user.Bans)
-	fields = append(fields, statusColumn)
+	teamColumn := ui.buildTeamNameColumnField(user.Accounts)
+	fields = append(fields, teamColumn)
+
+	guildColumn := ui.buildWvWGuildNameColumnField(user.Accounts)
+	fields = append(fields, guildColumn)
+
+	//statusColumn := ui.buildStatusColumnField(user.Accounts, user.Bans)
+	//fields = append(fields, statusColumn)
 
 	return fields
 }
@@ -61,7 +67,7 @@ func (ui *UIBuilder) buildAccountNameColumnField(accounts []api.Account) *discor
 	}
 
 	for _, account := range accounts {
-		if account.Id != "" {
+		if account.ID != "" {
 			if field.Value == "" {
 				field.Value = account.Name
 			} else {
@@ -79,12 +85,60 @@ func (ui *UIBuilder) buildWorldNameColumnField(accounts []api.Account) *discordg
 	}
 
 	for _, account := range accounts {
-		if account.Id != "" {
+		if account.ID != "" {
 			world := world.WorldNames[account.World]
 			if field.Value == "" {
 				field.Value = world.Name
 			} else {
 				field.Value += "\n" + world.Name
+			}
+		}
+	}
+	return field
+}
+
+func (ui *UIBuilder) buildTeamNameColumnField(accounts []api.Account) *discordgo.MessageEmbedField {
+	field := &discordgo.MessageEmbedField{
+		Name:   "WvW Team",
+		Inline: true,
+	}
+
+	for _, account := range accounts {
+		if account.ID != "" {
+			team, ok := world.TeamNames[account.WvWTeamID]
+			if !ok {
+				team = world.Team{Name: "Unassigned"}
+			}
+			if field.Value == "" {
+				field.Value = team.Name
+			} else {
+				field.Value += "\n" + team.Name
+			}
+		}
+	}
+	return field
+}
+
+func (ui *UIBuilder) buildWvWGuildNameColumnField(accounts []api.Account) *discordgo.MessageEmbedField {
+	field := &discordgo.MessageEmbedField{
+		Name:   "WvW Guild",
+		Inline: true,
+	}
+
+	for _, account := range accounts {
+		if account.ID != "" {
+			wvwGuildName := "Unassigned"
+			if account.WvWGuildID != nil {
+				wvwGuild, _ := ui.guilds.GetGuildInfo(*account.WvWGuildID)
+				if wvwGuild != nil {
+					wvwGuildName = wvwGuild.Name
+				}
+			}
+
+			if field.Value == "" {
+				field.Value = wvwGuildName
+			} else {
+				field.Value += "\n" + wvwGuildName
 			}
 		}
 	}
@@ -100,7 +154,7 @@ func (ui *UIBuilder) buildStatusColumnField(accounts []api.Account, bans []api.B
 	activeBan := api.ActiveBan(bans)
 
 	for _, account := range accounts {
-		if account.Id != "" {
+		if account.ID != "" {
 			statusStr := linkStatus(account.Expired, nil, activeBan != nil)
 			if field.Value == "" {
 				field.Value = statusStr
@@ -119,7 +173,7 @@ func (ui *UIBuilder) buildLastUpdatedColumnField(accounts []api.Account) *discor
 	}
 
 	for _, account := range accounts {
-		if account.Id != "" {
+		if account.ID != "" {
 			lastUpdated := account.DbUpdated
 			if lastUpdated.IsZero() {
 				continue

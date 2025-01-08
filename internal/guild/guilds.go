@@ -246,6 +246,16 @@ nextRole:
 	}
 }
 
+// CanHaveGuildVerifiedRoleAccounts returns true if just one of the accounts has the required API Key permissions to have the guild verification role on this server
+func (g *GuildRoleHandler) CanHaveGuildVerifiedRoleAccounts(guildID string, accounts []api.Account) bool {
+	for _, account := range accounts {
+		if g.CanHaveGuildVerifiedRole(guildID, account.ApiKeys) {
+			return true
+		}
+	}
+	return false
+}
+
 // CanHaveGuildVerifiedRole check if the user has the required API Key permissions to have the guild verification role on this server
 func (g *GuildRoleHandler) CanHaveGuildVerifiedRole(guildID string, apiKeys []api.TokenInfo) bool {
 	requiredPermissions := g.service.GetSettingSlice(guildID, backend.SettingGuildRequiredPermissions)

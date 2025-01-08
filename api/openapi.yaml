@@ -594,6 +594,9 @@ components:
         - created
         - commander
         - user_id
+        - wvw_rank
+        - wvw_team_id
+        - api_keys
       properties:
         db_created:
           type: string
@@ -611,6 +614,7 @@ components:
           type: string
           x-oapi-codegen-extra-tags:
             bun: ",pk"
+          x-go-name: ID
         name:
           type: string
         world:
@@ -632,6 +636,9 @@ components:
         created:
           type: string
           format: date-time
+        last_modified:
+          type: string
+          format: date-time
         commander:
           type: boolean
         fractal_level:
@@ -643,8 +650,18 @@ components:
         wvw_rank:
           type: integer
           x-oapi-codegen-extra-tags:
-            # gw2api account struct is named WvWRank and bun therefor wants it to be named wv_w_rank in the column
-            bun: wv_w_rank
+            bun: wvw_rank
+          x-go-name: WvWRank
+        wvw_team_id:
+          type: integer
+          x-oapi-codegen-extra-tags:
+            bun: wvw_team_id
+          x-go-name: WvWTeamID
+        wvw_guild_id:
+          type: string
+          x-oapi-codegen-extra-tags:
+            bun: wvw_guild_id
+          x-go-name: WvWGuildID
         user_id:
           type: integer
           format: int64
