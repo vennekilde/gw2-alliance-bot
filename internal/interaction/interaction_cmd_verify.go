@@ -16,7 +16,7 @@ var APIKeyErrorRegex = regexp.MustCompile(`(.*)(You need to name your api key ")
 const tmplAPIKeyInstructions = `Ensure the api key meets the following criteria:
 
 **Name your API key**
-%s%s
+` + "`%s%s`" + `
 
 **Permissions**
 - Characters
