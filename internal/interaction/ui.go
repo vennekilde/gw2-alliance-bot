@@ -3,6 +3,7 @@ package interaction
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -10,6 +11,23 @@ import (
 	"github.com/vennekilde/gw2-alliance-bot/internal/guild"
 	"github.com/vennekilde/gw2-alliance-bot/internal/world"
 )
+
+func authorFromInteraction(event *discordgo.InteractionCreate, member *discordgo.Member, memberID string) *discordgo.MessageEmbedAuthor {
+	var author discordgo.MessageEmbedAuthor
+	if member.Nick != "" {
+		author.Name = member.Nick
+		author.IconURL = member.AvatarURL("")
+	} else if member.User != nil {
+		author.Name = member.User.Username
+		author.IconURL = member.User.AvatarURL("")
+	} else {
+		user := event.ApplicationCommandData().Resolved.Users[memberID]
+		author.Name = user.Username
+		author.IconURL = user.AvatarURL("")
+	}
+
+	return &author
+}
 
 type UIBuilder struct {
 	guilds *guild.Guilds
@@ -285,7 +303,7 @@ func (ui *UIBuilder) buildExpiresColumnField(ephemeralAssocs []api.EphemeralAsso
 func (ui *UIBuilder) buildGuildsField(accounts []api.Account) *discordgo.MessageEmbedField {
 	field := &discordgo.MessageEmbedField{
 		Name:   "Guilds",
-		Inline: true,
+		Inline: false,
 	}
 
 	var guildNames []string
@@ -316,6 +334,124 @@ func (ui *UIBuilder) buildGuildsField(accounts []api.Account) *discordgo.Message
 		}
 	}
 
+	return field
+}
+
+// buildTokensTableEmbeds creates an embeds table of the associated account api tokens
+func (ui *UIBuilder) buildTokensTableEmbeds(user *api.User) []*discordgo.MessageEmbed {
+	var embeds []*discordgo.MessageEmbed
+	// fields := ui.buildTokensTableFields(user.Accounts)
+	// embeds = append(embeds, &discordgo.MessageEmbed{
+	// 	Title:  "Overview",
+	// 	Fields: fields,
+	// 	Color:  0x3498DB, // blue
+	// })
+	for _, account := range user.Accounts {
+		for _, token := range account.ApiKeys {
+			tokenFields := ui.buildTokenTableFields(account, token)
+			embeds = append(embeds, &discordgo.MessageEmbed{
+				Title:     "API Key - " + token.Name + "",
+				Fields:    tokenFields,
+				Color:     0x3498DB, // blue
+				Timestamp: token.LastSuccess.Format(time.RFC3339),
+				Footer: &discordgo.MessageEmbedFooter{
+					Text: "Last synchronization",
+				},
+			})
+		}
+	}
+
+	return embeds
+}
+
+// buildTokensTableFields creates an embed field table of the associated account api tokens
+func (ui *UIBuilder) buildTokenTableFields(acc api.Account, token api.TokenInfo) []*discordgo.MessageEmbedField {
+	return ui.buildTokenAccountNameColumnField(acc, token)
+}
+
+// buildTokensTableFields creates an embed field table of the associated account api tokens
+func (ui *UIBuilder) buildTokensTableFields(accounts []api.Account) []*discordgo.MessageEmbedField {
+	var fields []*discordgo.MessageEmbedField
+
+	apiKeyColumn := ui.buildAPIKeyNameColumnField(accounts)
+	fields = append(fields, apiKeyColumn)
+
+	accColumn := ui.buildAPIKeyAccountNameColumnField(accounts)
+	fields = append(fields, accColumn)
+
+	permissionsColumn := ui.buildAPIKeyPermissionColumnField(accounts)
+	fields = append(fields, permissionsColumn)
+
+	return fields
+}
+
+func (ui *UIBuilder) buildTokenAccountNameColumnField(acc api.Account, token api.TokenInfo) []*discordgo.MessageEmbedField {
+	fields := []*discordgo.MessageEmbedField{
+		{
+			Name:   "Account",
+			Inline: true,
+			Value:  acc.Name,
+		},
+		{
+			Name:   "Permissions",
+			Inline: false,
+			Value:  strings.Join(token.Permissions, ", "),
+		},
+	}
+	return fields
+}
+
+func (ui *UIBuilder) buildAPIKeyNameColumnField(accounts []api.Account) *discordgo.MessageEmbedField {
+	field := &discordgo.MessageEmbedField{
+		Name:   "API Key",
+		Inline: true,
+	}
+
+	for _, account := range accounts {
+		for _, token := range account.ApiKeys {
+			if field.Value == "" {
+				field.Value = token.Name
+			} else {
+				field.Value += "\n" + token.Name
+			}
+		}
+	}
+	return field
+}
+
+func (ui *UIBuilder) buildAPIKeyAccountNameColumnField(accounts []api.Account) *discordgo.MessageEmbedField {
+	field := &discordgo.MessageEmbedField{
+		Name:   "Account",
+		Inline: true,
+	}
+
+	for _, account := range accounts {
+		for range account.ApiKeys {
+			if field.Value == "" {
+				field.Value = account.Name
+			} else {
+				field.Value += "\n" + account.Name
+			}
+		}
+	}
+	return field
+}
+
+func (ui *UIBuilder) buildAPIKeyPermissionColumnField(accounts []api.Account) *discordgo.MessageEmbedField {
+	field := &discordgo.MessageEmbedField{
+		Name:   "Permissions",
+		Inline: true,
+	}
+
+	for _, account := range accounts {
+		for _, token := range account.ApiKeys {
+			if field.Value == "" {
+				field.Value = strings.Join(token.Permissions, ", ")
+			} else {
+				field.Value += "\n" + strings.Join(token.Permissions, ", ")
+			}
+		}
+	}
 	return field
 }
 

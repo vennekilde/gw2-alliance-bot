@@ -10,26 +10,26 @@ import (
 	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
 )
 
-type StatusCmd struct {
+type APIKeysCmd struct {
 	backend *api.ClientWithResponses
 	ui      *UIBuilder
 }
 
-func NewStatusCmd(backend *api.ClientWithResponses, ui *UIBuilder) *StatusCmd {
-	return &StatusCmd{
+func NewAPIKeysCmd(backend *api.ClientWithResponses, ui *UIBuilder) *APIKeysCmd {
+	return &APIKeysCmd{
 		backend: backend,
 		ui:      ui,
 	}
 }
 
-func (c *StatusCmd) Register(i *Interactions) {
+func (c *APIKeysCmd) Register(i *Interactions) {
 	// Status cmd
 	i.addCommand(&Command{
 		command: &discordgo.ApplicationCommand{
-			Name:        "status",
-			Description: "Display your current verification status",
+			Name:        "apikeys",
+			Description: "List of active API keys linked to your discord account",
 		},
-		handler: c.onCommandStatus,
+		handler: c.onCommandAPIKeys,
 	})
 
 	var statsPermission int64 = discordgo.PermissionAdministrator
@@ -38,17 +38,17 @@ func (c *StatusCmd) Register(i *Interactions) {
 	// Status menu
 	i.addCommand(&Command{
 		command: &discordgo.ApplicationCommand{
-			Name:                     "Status",
+			Name:                     "APIKeys",
 			Type:                     discordgo.UserApplicationCommand,
 			DefaultMemberPermissions: &statsPermission,
 			DMPermission:             &statsPermissionDM,
 		},
-		handler: c.onCommandStatus,
+		handler: c.onCommandAPIKeys,
 	})
 
 }
 
-func (c *StatusCmd) onCommandStatus(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+func (c *APIKeysCmd) onCommandAPIKeys(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 	members := resolveMembersFromApplicationCommandData(event)
 	for memberID, member := range members {
 		ctx := context.Background()
@@ -65,27 +65,12 @@ func (c *StatusCmd) onCommandStatus(s *discordgo.Session, event *discordgo.Inter
 		}
 
 		user := resp.JSON200
-		c.sendFollowupStatusMessage(s, event, memberID, member, user)
+		c.sendFollowupAPIKeysMessage(s, event, memberID, member, user)
 	}
 }
 
-func (c *StatusCmd) sendFollowupStatusMessage(s *discordgo.Session, event *discordgo.InteractionCreate, memberID string, member *discordgo.Member, user *api.User) {
-	author := authorFromInteraction(event, member, memberID)
-
-	accountTableFields := c.ui.buildStatusFields(user)
-
-	activeBan := api.ActiveBan(user.Bans)
-	expired := len(user.Accounts) == 0
-	embeds := []*discordgo.MessageEmbed{
-		{
-			Color:       linkStatusColor(&expired, nil, activeBan != nil, 0x57F287, 0xED4245, 0x95A5A6), // green, red, lightgrey
-			Title:       "Overview",
-			Description: "Accounts linked with your discord user",
-			Fields:      accountTableFields,
-			Author:      author,
-		},
-	}
-
+func (c *APIKeysCmd) sendFollowupAPIKeysMessage(s *discordgo.Session, event *discordgo.InteractionCreate, memberID string, member *discordgo.Member, user *api.User) {
+	embeds := c.ui.buildTokensTableEmbeds(user)
 	_, err := s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
 		Flags:  discordgo.MessageFlagsEphemeral,
 		Embeds: embeds,

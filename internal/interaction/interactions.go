@@ -62,6 +62,9 @@ func NewInteractions(discord *discordgo.Session, cache *discord.Cache, service *
 	statusHandler := NewStatusCmd(backend, c.ui)
 	statusHandler.Register(c)
 
+	apiKeysHandler := NewAPIKeysCmd(backend, c.ui)
+	apiKeysHandler.Register(c)
+
 	refreshHandler := NewRefreshCmd(backend, statusHandler, wvw)
 	refreshHandler.Register(c)
 
