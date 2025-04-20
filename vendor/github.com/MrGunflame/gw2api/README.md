@@ -66,6 +66,7 @@ func main() {
 - [x] /v2/account/home/cats
 - [x] /v2/account/home/nodes
 - [x] /v2/account/inventory
+- [x] /v2/account/jadebots
 - [x] /v2/account/legendaryarmory
 - [x] /v2/account/luck
 - [x] /v2/account/mailcarriers
@@ -104,6 +105,7 @@ func main() {
 - [x] /v2/specializations
 - [x] /v2/skills
 - [x] /v2/traits
+- [x] /v2/jadebots
 - [x] /v2/legendaryarmory
 - [x] /v2/legends
 - [x] /v2/guild/:id

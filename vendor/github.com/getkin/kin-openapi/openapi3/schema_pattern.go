@@ -5,17 +5,22 @@ import (
 	"regexp"
 )
 
-var patRewriteCodepoints = regexp.MustCompile(`[\][u]([0-9A-F]{4})`)
+var patRewriteCodepoints = regexp.MustCompile(`(?P<replaced_with_slash_x>\\u)(?P<code>[0-9A-F]{4})`)
 
 // See https://pkg.go.dev/regexp/syntax
 func intoGoRegexp(re string) string {
-	return patRewriteCodepoints.ReplaceAllString(re, `x{$1}`)
+	return patRewriteCodepoints.ReplaceAllString(re, `\x{${code}}`)
 }
 
 // NOTE: racey WRT [writes to schema.Pattern] vs [reads schema.Pattern then writes to compiledPatterns]
-func (schema *Schema) compilePattern() (cp *regexp.Regexp, err error) {
+func (schema *Schema) compilePattern(c RegexCompilerFunc) (cp RegexMatcher, err error) {
 	pattern := schema.Pattern
-	if cp, err = regexp.Compile(intoGoRegexp(pattern)); err != nil {
+	if c != nil {
+		cp, err = c(pattern)
+	} else {
+		cp, err = regexp.Compile(intoGoRegexp(pattern))
+	}
+	if err != nil {
 		err = &SchemaError{
 			Schema:      schema,
 			SchemaField: "pattern",
@@ -24,6 +29,7 @@ func (schema *Schema) compilePattern() (cp *regexp.Regexp, err error) {
 		}
 		return
 	}
+
 	var _ bool = compiledPatterns.CompareAndSwap(pattern, nil, cp)
 	return
 }

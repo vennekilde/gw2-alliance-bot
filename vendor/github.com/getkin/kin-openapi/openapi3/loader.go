@@ -11,13 +11,14 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 )
 
-var CircularReferenceError = "kin-openapi bug found: circular schema reference not handled"
-var CircularReferenceCounter = 3
+// IncludeOrigin specifies whether to include the origin of the OpenAPI elements
+// Set this to true before loading a spec to include the origin of the OpenAPI elements
+// Note it is global and affects all loaders
+var IncludeOrigin = false
 
 func foundUnresolvedRef(ref string) error {
 	return fmt.Errorf("found unresolved ref: %q", ref)
@@ -44,15 +45,9 @@ type Loader struct {
 
 	visitedDocuments map[string]*T
 
-	visitedCallback       map[*Callback]struct{}
-	visitedExample        map[*Example]struct{}
-	visitedHeader         map[*Header]struct{}
-	visitedLink           map[*Link]struct{}
-	visitedParameter      map[*Parameter]struct{}
-	visitedRequestBody    map[*RequestBody]struct{}
-	visitedResponse       map[*Response]struct{}
-	visitedSchema         map[*Schema]struct{}
-	visitedSecurityScheme map[*SecurityScheme]struct{}
+	visitedRefs map[string]struct{}
+	visitedPath []string
+	backtrack   map[string][]func(value any)
 }
 
 // NewLoader returns an empty Loader
@@ -64,6 +59,9 @@ func NewLoader() *Loader {
 
 func (loader *Loader) resetVisitedPathItemRefs() {
 	loader.visitedPathItemRefs = make(map[string]struct{})
+	loader.visitedRefs = make(map[string]struct{})
+	loader.visitedPath = nil
+	loader.backtrack = make(map[string][]func(value any))
 }
 
 // LoadFromURI loads a spec from a remote URL
@@ -93,7 +91,7 @@ func (loader *Loader) allowsExternalRefs(ref string) (err error) {
 	return
 }
 
-func (loader *Loader) loadSingleElementFromURI(ref string, rootPath *url.URL, element interface{}) (*url.URL, error) {
+func (loader *Loader) loadSingleElementFromURI(ref string, rootPath *url.URL, element any) (*url.URL, error) {
 	if err := loader.allowsExternalRefs(ref); err != nil {
 		return nil, err
 	}
@@ -110,7 +108,7 @@ func (loader *Loader) loadSingleElementFromURI(ref string, rootPath *url.URL, el
 	if err != nil {
 		return nil, err
 	}
-	if err := unmarshal(data, element); err != nil {
+	if err := unmarshal(data, element, IncludeOrigin); err != nil {
 		return nil, err
 	}
 
@@ -126,9 +124,18 @@ func (loader *Loader) readURL(location *url.URL) ([]byte, error) {
 
 // LoadFromStdin loads a spec from stdin
 func (loader *Loader) LoadFromStdin() (*T, error) {
-	data, err := io.ReadAll(os.Stdin)
+	return loader.LoadFromIoReader(os.Stdin)
+}
+
+// LoadFromStdin loads a spec from io.Reader
+func (loader *Loader) LoadFromIoReader(reader io.Reader) (*T, error) {
+	if reader == nil {
+		return nil, fmt.Errorf("invalid reader: %v", reader)
+	}
+
+	data, err := io.ReadAll(reader)
 	if err != nil {
-		return nil, fmt.Errorf("read from stdin: %w", err)
+		return nil, err
 	}
 	return loader.LoadFromData(data)
 }
@@ -137,7 +144,7 @@ func (loader *Loader) LoadFromStdin() (*T, error) {
 func (loader *Loader) LoadFromData(data []byte) (*T, error) {
 	loader.resetVisitedPathItemRefs()
 	doc := &T{}
-	if err := unmarshal(data, doc); err != nil {
+	if err := unmarshal(data, doc, IncludeOrigin); err != nil {
 		return nil, err
 	}
 	if err := loader.ResolveRefsIn(doc, nil); err != nil {
@@ -166,9 +173,12 @@ func (loader *Loader) loadFromDataWithPathInternal(data []byte, location *url.UR
 	doc := &T{}
 	loader.visitedDocuments[uri] = doc
 
-	if err := unmarshal(data, doc); err != nil {
+	if err := unmarshal(data, doc, IncludeOrigin); err != nil {
 		return nil, err
 	}
+
+	doc.url = copyURI(location)
+
 	if err := loader.ResolveRefsIn(doc, location); err != nil {
 		return nil, err
 	}
@@ -187,50 +197,50 @@ func (loader *Loader) ResolveRefsIn(doc *T, location *url.URL) (err error) {
 	}
 
 	if components := doc.Components; components != nil {
-		for _, component := range components.Headers {
+		for _, name := range componentNames(components.Headers) {
+			component := components.Headers[name]
 			if err = loader.resolveHeaderRef(doc, component, location); err != nil {
 				return
 			}
 		}
-		for _, component := range components.Parameters {
+		for _, name := range componentNames(components.Parameters) {
+			component := components.Parameters[name]
 			if err = loader.resolveParameterRef(doc, component, location); err != nil {
 				return
 			}
 		}
-		for _, component := range components.RequestBodies {
+		for _, name := range componentNames(components.RequestBodies) {
+			component := components.RequestBodies[name]
 			if err = loader.resolveRequestBodyRef(doc, component, location); err != nil {
 				return
 			}
 		}
-		for _, component := range components.Responses {
+		for _, name := range componentNames(components.Responses) {
+			component := components.Responses[name]
 			if err = loader.resolveResponseRef(doc, component, location); err != nil {
 				return
 			}
 		}
-		for _, component := range components.Schemas {
+		for _, name := range componentNames(components.Schemas) {
+			component := components.Schemas[name]
 			if err = loader.resolveSchemaRef(doc, component, location, []string{}); err != nil {
 				return
 			}
 		}
-		for _, component := range components.SecuritySchemes {
+		for _, name := range componentNames(components.SecuritySchemes) {
+			component := components.SecuritySchemes[name]
 			if err = loader.resolveSecuritySchemeRef(doc, component, location); err != nil {
 				return
 			}
 		}
-
-		examples := make([]string, 0, len(components.Examples))
-		for name := range components.Examples {
-			examples = append(examples, name)
-		}
-		sort.Strings(examples)
-		for _, name := range examples {
+		for _, name := range componentNames(components.Examples) {
 			component := components.Examples[name]
 			if err = loader.resolveExampleRef(doc, component, location); err != nil {
 				return
 			}
 		}
-
-		for _, component := range components.Callbacks {
+		for _, name := range componentNames(components.Callbacks) {
+			component := components.Callbacks[name]
 			if err = loader.resolveCallbackRef(doc, component, location); err != nil {
 				return
 			}
@@ -238,7 +248,9 @@ func (loader *Loader) ResolveRefsIn(doc *T, location *url.URL) (err error) {
 	}
 
 	// Visit all operations
-	for _, pathItem := range doc.Paths.Map() {
+	pathItems := doc.Paths.Map()
+	for _, name := range componentNames(pathItems) {
+		pathItem := pathItems[name]
 		if pathItem == nil {
 			continue
 		}
@@ -262,7 +274,7 @@ func join(basePath *url.URL, relativePath *url.URL) *url.URL {
 func resolvePath(basePath *url.URL, componentPath *url.URL) *url.URL {
 	if is_file(componentPath) {
 		// support absolute paths
-		if componentPath.Path[0] == '/' {
+		if filepath.IsAbs(componentPath.Path) {
 			return componentPath
 		}
 		return join(basePath, componentPath)
@@ -281,16 +293,69 @@ func resolvePathWithRef(ref string, rootPath *url.URL) (*url.URL, error) {
 	return resolvedPath, nil
 }
 
+func (loader *Loader) resolveRefPath(ref string, path *url.URL) (*url.URL, error) {
+	if ref != "" && ref[0] == '#' {
+		path = copyURI(path)
+		// Resolving internal refs of a doc loaded from memory
+		// has no path, so just set the Fragment.
+		if path == nil {
+			path = new(url.URL)
+		}
+
+		path.Fragment = ref
+		return path, nil
+	}
+
+	if err := loader.allowsExternalRefs(ref); err != nil {
+		return nil, err
+	}
+
+	resolvedPath, err := resolvePathWithRef(ref, path)
+	if err != nil {
+		return nil, err
+	}
+
+	return resolvedPath, nil
+}
+
 func isSingleRefElement(ref string) bool {
 	return !strings.Contains(ref, "#")
 }
 
-func (loader *Loader) resolveComponent(doc *T, ref string, path *url.URL, resolved interface{}) (
+func (loader *Loader) visitRef(ref string) {
+	if loader.visitedRefs == nil {
+		loader.visitedRefs = make(map[string]struct{})
+		loader.backtrack = make(map[string][]func(value any))
+	}
+	loader.visitedPath = append(loader.visitedPath, ref)
+	loader.visitedRefs[ref] = struct{}{}
+}
+
+func (loader *Loader) unvisitRef(ref string, value any) {
+	if value != nil {
+		for _, fn := range loader.backtrack[ref] {
+			fn(value)
+		}
+	}
+	delete(loader.visitedRefs, ref)
+	delete(loader.backtrack, ref)
+	loader.visitedPath = loader.visitedPath[:len(loader.visitedPath)-1]
+}
+
+func (loader *Loader) shouldVisitRef(ref string, fn func(value any)) bool {
+	if _, ok := loader.visitedRefs[ref]; ok {
+		loader.backtrack[ref] = append(loader.backtrack[ref], fn)
+		return false
+	}
+	return true
+}
+
+func (loader *Loader) resolveComponent(doc *T, ref string, path *url.URL, resolved any) (
 	componentDoc *T,
 	componentPath *url.URL,
 	err error,
 ) {
-	if componentDoc, ref, componentPath, err = loader.resolveRef(doc, ref, path); err != nil {
+	if componentDoc, ref, componentPath, err = loader.resolveRefAndDocument(doc, ref, path); err != nil {
 		return nil, nil, err
 	}
 
@@ -306,7 +371,7 @@ func (loader *Loader) resolveComponent(doc *T, ref string, path *url.URL, resolv
 		return nil, nil, fmt.Errorf("expected fragment prefix '#/' in URI %q", ref)
 	}
 
-	drill := func(cursor interface{}) (interface{}, error) {
+	drill := func(cursor any) (any, error) {
 		for _, pathPart := range strings.Split(fragment[1:], "/") {
 			pathPart = unescapeRefString(pathPart)
 			attempted := false
@@ -352,7 +417,7 @@ func (loader *Loader) resolveComponent(doc *T, ref string, path *url.URL, resolv
 		}
 		return cursor, nil
 	}
-	var cursor interface{}
+	var cursor any
 	if cursor, err = drill(componentDoc); err != nil {
 		if path == nil {
 			return nil, nil, err
@@ -362,7 +427,7 @@ func (loader *Loader) resolveComponent(doc *T, ref string, path *url.URL, resolv
 		if err2 != nil {
 			return nil, nil, err
 		}
-		if err2 = unmarshal(data, &cursor); err2 != nil {
+		if err2 = unmarshal(data, &cursor, IncludeOrigin); err2 != nil {
 			return nil, nil, err
 		}
 		if cursor, err2 = drill(cursor); err2 != nil || cursor == nil {
@@ -371,13 +436,31 @@ func (loader *Loader) resolveComponent(doc *T, ref string, path *url.URL, resolv
 		err = nil
 	}
 
+	setPathRef := func(target any) {
+		if i, ok := target.(interface {
+			setRefPath(*url.URL)
+		}); ok {
+			pathRef := copyURI(componentPath)
+			// Resolving internal refs of a doc loaded from memory
+			// has no path, so just set the Fragment.
+			if pathRef == nil {
+				pathRef = new(url.URL)
+			}
+			pathRef.Fragment = fragment
+
+			i.setRefPath(pathRef)
+		}
+	}
+
 	switch {
 	case reflect.TypeOf(cursor) == reflect.TypeOf(resolved):
+		setPathRef(cursor)
+
 		reflect.ValueOf(resolved).Elem().Set(reflect.ValueOf(cursor).Elem())
 		return componentDoc, componentPath, nil
 
-	case reflect.TypeOf(cursor) == reflect.TypeOf(map[string]interface{}{}):
-		codec := func(got, expect interface{}) error {
+	case reflect.TypeOf(cursor) == reflect.TypeOf(map[string]any{}):
+		codec := func(got, expect any) error {
 			enc, err := json.Marshal(got)
 			if err != nil {
 				return err
@@ -385,6 +468,8 @@ func (loader *Loader) resolveComponent(doc *T, ref string, path *url.URL, resolv
 			if err = json.Unmarshal(enc, expect); err != nil {
 				return err
 			}
+
+			setPathRef(expect)
 			return nil
 		}
 		if err := codec(cursor, resolved); err != nil {
@@ -397,7 +482,7 @@ func (loader *Loader) resolveComponent(doc *T, ref string, path *url.URL, resolv
 	}
 }
 
-func readableType(x interface{}) string {
+func readableType(x any) string {
 	switch x.(type) {
 	case *Callback:
 		return "callback object"
@@ -426,7 +511,7 @@ func readableType(x interface{}) string {
 	}
 }
 
-func drillIntoField(cursor interface{}, fieldName string) (interface{}, error) {
+func drillIntoField(cursor any, fieldName string) (any, error) {
 	switch val := reflect.Indirect(reflect.ValueOf(cursor)); val.Kind() {
 
 	case reflect.Map:
@@ -467,7 +552,7 @@ func drillIntoField(cursor interface{}, fieldName string) (interface{}, error) {
 		}
 		if hasFields {
 			if ff := val.Type().Field(0); ff.PkgPath == "" && ff.Name == "Extensions" {
-				extensions := val.Field(0).Interface().(map[string]interface{})
+				extensions := val.Field(0).Interface().(map[string]any)
 				if enc, ok := extensions[fieldName]; ok {
 					return enc, nil
 				}
@@ -480,27 +565,32 @@ func drillIntoField(cursor interface{}, fieldName string) (interface{}, error) {
 	}
 }
 
-func (loader *Loader) resolveRef(doc *T, ref string, path *url.URL) (*T, string, *url.URL, error) {
+func (loader *Loader) resolveRefAndDocument(doc *T, ref string, path *url.URL) (*T, string, *url.URL, error) {
 	if ref != "" && ref[0] == '#' {
 		return doc, ref, path, nil
 	}
 
-	if err := loader.allowsExternalRefs(ref); err != nil {
-		return nil, "", nil, err
-	}
-
-	resolvedPath, err := resolvePathWithRef(ref, path)
+	fragment, resolvedPath, err := loader.resolveRef(ref, path)
 	if err != nil {
 		return nil, "", nil, err
 	}
-	fragment := "#" + resolvedPath.Fragment
-	resolvedPath.Fragment = ""
 
 	if doc, err = loader.loadFromURIInternal(resolvedPath); err != nil {
 		return nil, "", nil, fmt.Errorf("error resolving reference %q: %w", ref, err)
 	}
 
 	return doc, fragment, resolvedPath, nil
+}
+
+func (loader *Loader) resolveRef(ref string, path *url.URL) (string, *url.URL, error) {
+	resolvedPathRef, err := loader.resolveRefPath(ref, path)
+	if err != nil {
+		return "", nil, err
+	}
+
+	fragment := "#" + resolvedPathRef.Fragment
+	resolvedPathRef.Fragment = ""
+	return fragment, resolvedPathRef, nil
 }
 
 var (
@@ -521,23 +611,25 @@ func (loader *Loader) resolveHeaderRef(doc *T, component *HeaderRef, documentPat
 		return errMUSTHeader
 	}
 
-	if component.Value != nil {
-		if loader.visitedHeader == nil {
-			loader.visitedHeader = make(map[*Header]struct{})
-		}
-		if _, ok := loader.visitedHeader[component.Value]; ok {
+	if ref := component.Ref; ref != "" {
+		if component.Value != nil {
 			return nil
 		}
-		loader.visitedHeader[component.Value] = struct{}{}
-	}
-
-	if ref := component.Ref; ref != "" {
+		if !loader.shouldVisitRef(ref, func(value any) {
+			component.Value = value.(*Header)
+			refPath, _ := loader.resolveRefPath(ref, documentPath)
+			component.setRefPath(refPath)
+		}) {
+			return nil
+		}
+		loader.visitRef(ref)
 		if isSingleRefElement(ref) {
 			var header Header
 			if documentPath, err = loader.loadSingleElementFromURI(ref, documentPath, &header); err != nil {
 				return err
 			}
 			component.Value = &header
+			component.setRefPath(documentPath)
 		} else {
 			var resolved HeaderRef
 			doc, componentPath, err := loader.resolveComponent(doc, ref, documentPath, &resolved)
@@ -551,7 +643,9 @@ func (loader *Loader) resolveHeaderRef(doc *T, component *HeaderRef, documentPat
 				return err
 			}
 			component.Value = resolved.Value
+			component.setRefPath(resolved.RefPath())
 		}
+		defer loader.unvisitRef(ref, component.Value)
 	}
 	value := component.Value
 	if value == nil {
@@ -571,23 +665,25 @@ func (loader *Loader) resolveParameterRef(doc *T, component *ParameterRef, docum
 		return errMUSTParameter
 	}
 
-	if component.Value != nil {
-		if loader.visitedParameter == nil {
-			loader.visitedParameter = make(map[*Parameter]struct{})
-		}
-		if _, ok := loader.visitedParameter[component.Value]; ok {
+	if ref := component.Ref; ref != "" {
+		if component.Value != nil {
 			return nil
 		}
-		loader.visitedParameter[component.Value] = struct{}{}
-	}
-
-	if ref := component.Ref; ref != "" {
+		if !loader.shouldVisitRef(ref, func(value any) {
+			component.Value = value.(*Parameter)
+			refPath, _ := loader.resolveRefPath(ref, documentPath)
+			component.setRefPath(refPath)
+		}) {
+			return nil
+		}
+		loader.visitRef(ref)
 		if isSingleRefElement(ref) {
 			var param Parameter
 			if documentPath, err = loader.loadSingleElementFromURI(ref, documentPath, &param); err != nil {
 				return err
 			}
 			component.Value = &param
+			component.setRefPath(documentPath)
 		} else {
 			var resolved ParameterRef
 			doc, componentPath, err := loader.resolveComponent(doc, ref, documentPath, &resolved)
@@ -601,7 +697,9 @@ func (loader *Loader) resolveParameterRef(doc *T, component *ParameterRef, docum
 				return err
 			}
 			component.Value = resolved.Value
+			component.setRefPath(resolved.RefPath())
 		}
+		defer loader.unvisitRef(ref, component.Value)
 	}
 	value := component.Value
 	if value == nil {
@@ -611,7 +709,8 @@ func (loader *Loader) resolveParameterRef(doc *T, component *ParameterRef, docum
 	if value.Content != nil && value.Schema != nil {
 		return errors.New("cannot contain both schema and content in a parameter")
 	}
-	for _, contentType := range value.Content {
+	for _, name := range componentNames(value.Content) {
+		contentType := value.Content[name]
 		if schema := contentType.Schema; schema != nil {
 			if err := loader.resolveSchemaRef(doc, schema, documentPath, []string{}); err != nil {
 				return err
@@ -631,23 +730,25 @@ func (loader *Loader) resolveRequestBodyRef(doc *T, component *RequestBodyRef, d
 		return errMUSTRequestBody
 	}
 
-	if component.Value != nil {
-		if loader.visitedRequestBody == nil {
-			loader.visitedRequestBody = make(map[*RequestBody]struct{})
-		}
-		if _, ok := loader.visitedRequestBody[component.Value]; ok {
+	if ref := component.Ref; ref != "" {
+		if component.Value != nil {
 			return nil
 		}
-		loader.visitedRequestBody[component.Value] = struct{}{}
-	}
-
-	if ref := component.Ref; ref != "" {
+		if !loader.shouldVisitRef(ref, func(value any) {
+			component.Value = value.(*RequestBody)
+			refPath, _ := loader.resolveRefPath(ref, documentPath)
+			component.setRefPath(refPath)
+		}) {
+			return nil
+		}
+		loader.visitRef(ref)
 		if isSingleRefElement(ref) {
 			var requestBody RequestBody
 			if documentPath, err = loader.loadSingleElementFromURI(ref, documentPath, &requestBody); err != nil {
 				return err
 			}
 			component.Value = &requestBody
+			component.setRefPath(documentPath)
 		} else {
 			var resolved RequestBodyRef
 			doc, componentPath, err := loader.resolveComponent(doc, ref, documentPath, &resolved)
@@ -661,23 +762,21 @@ func (loader *Loader) resolveRequestBodyRef(doc *T, component *RequestBodyRef, d
 				return err
 			}
 			component.Value = resolved.Value
+			component.setRefPath(resolved.RefPath())
 		}
+		defer loader.unvisitRef(ref, component.Value)
 	}
 	value := component.Value
 	if value == nil {
 		return nil
 	}
 
-	for _, contentType := range value.Content {
+	for _, name := range componentNames(value.Content) {
+		contentType := value.Content[name]
 		if contentType == nil {
 			continue
 		}
-		examples := make([]string, 0, len(contentType.Examples))
-		for name := range contentType.Examples {
-			examples = append(examples, name)
-		}
-		sort.Strings(examples)
-		for _, name := range examples {
+		for _, name := range componentNames(contentType.Examples) {
 			example := contentType.Examples[name]
 			if err := loader.resolveExampleRef(doc, example, documentPath); err != nil {
 				return err
@@ -698,23 +797,25 @@ func (loader *Loader) resolveResponseRef(doc *T, component *ResponseRef, documen
 		return errMUSTResponse
 	}
 
-	if component.Value != nil {
-		if loader.visitedResponse == nil {
-			loader.visitedResponse = make(map[*Response]struct{})
-		}
-		if _, ok := loader.visitedResponse[component.Value]; ok {
+	if ref := component.Ref; ref != "" {
+		if component.Value != nil {
 			return nil
 		}
-		loader.visitedResponse[component.Value] = struct{}{}
-	}
-
-	if ref := component.Ref; ref != "" {
+		if !loader.shouldVisitRef(ref, func(value any) {
+			component.Value = value.(*Response)
+			refPath, _ := loader.resolveRefPath(ref, documentPath)
+			component.setRefPath(refPath)
+		}) {
+			return nil
+		}
+		loader.visitRef(ref)
 		if isSingleRefElement(ref) {
 			var resp Response
 			if documentPath, err = loader.loadSingleElementFromURI(ref, documentPath, &resp); err != nil {
 				return err
 			}
 			component.Value = &resp
+			component.setRefPath(documentPath)
 		} else {
 			var resolved ResponseRef
 			doc, componentPath, err := loader.resolveComponent(doc, ref, documentPath, &resolved)
@@ -728,28 +829,27 @@ func (loader *Loader) resolveResponseRef(doc *T, component *ResponseRef, documen
 				return err
 			}
 			component.Value = resolved.Value
+			component.setRefPath(resolved.RefPath())
 		}
+		defer loader.unvisitRef(ref, component.Value)
 	}
 	value := component.Value
 	if value == nil {
 		return nil
 	}
 
-	for _, header := range value.Headers {
+	for _, name := range componentNames(value.Headers) {
+		header := value.Headers[name]
 		if err := loader.resolveHeaderRef(doc, header, documentPath); err != nil {
 			return err
 		}
 	}
-	for _, contentType := range value.Content {
+	for _, name := range componentNames(value.Content) {
+		contentType := value.Content[name]
 		if contentType == nil {
 			continue
 		}
-		examples := make([]string, 0, len(contentType.Examples))
-		for name := range contentType.Examples {
-			examples = append(examples, name)
-		}
-		sort.Strings(examples)
-		for _, name := range examples {
+		for _, name := range componentNames(contentType.Examples) {
 			example := contentType.Examples[name]
 			if err := loader.resolveExampleRef(doc, example, documentPath); err != nil {
 				return err
@@ -763,7 +863,8 @@ func (loader *Loader) resolveResponseRef(doc *T, component *ResponseRef, documen
 			contentType.Schema = schema
 		}
 	}
-	for _, link := range value.Links {
+	for _, name := range componentNames(value.Links) {
+		link := value.Links[name]
 		if err := loader.resolveLinkRef(doc, link, documentPath); err != nil {
 			return err
 		}
@@ -776,30 +877,26 @@ func (loader *Loader) resolveSchemaRef(doc *T, component *SchemaRef, documentPat
 		return errMUSTSchema
 	}
 
-	if component.Value != nil {
-		if loader.visitedSchema == nil {
-			loader.visitedSchema = make(map[*Schema]struct{})
-		}
-		if _, ok := loader.visitedSchema[component.Value]; ok {
+	if ref := component.Ref; ref != "" {
+		if component.Value != nil {
 			return nil
 		}
-		loader.visitedSchema[component.Value] = struct{}{}
-	}
-
-	if ref := component.Ref; ref != "" {
+		if !loader.shouldVisitRef(ref, func(value any) {
+			component.Value = value.(*Schema)
+			refPath, _ := loader.resolveRefPath(ref, documentPath)
+			component.setRefPath(refPath)
+		}) {
+			return nil
+		}
+		loader.visitRef(ref)
 		if isSingleRefElement(ref) {
 			var schema Schema
 			if documentPath, err = loader.loadSingleElementFromURI(ref, documentPath, &schema); err != nil {
 				return err
 			}
 			component.Value = &schema
+			component.setRefPath(documentPath)
 		} else {
-			if visitedLimit(visited, ref) {
-				visited = append(visited, ref)
-				return fmt.Errorf("%s with length %d - %s", CircularReferenceError, len(visited), strings.Join(visited, " -> "))
-			}
-			visited = append(visited, ref)
-
 			var resolved SchemaRef
 			doc, componentPath, err := loader.resolveComponent(doc, ref, documentPath, &resolved)
 			if err != nil {
@@ -812,11 +909,9 @@ func (loader *Loader) resolveSchemaRef(doc *T, component *SchemaRef, documentPat
 				return err
 			}
 			component.Value = resolved.Value
+			component.setRefPath(resolved.RefPath())
 		}
-		if loader.visitedSchema == nil {
-			loader.visitedSchema = make(map[*Schema]struct{})
-		}
-		loader.visitedSchema[component.Value] = struct{}{}
+		defer loader.unvisitRef(ref, component.Value)
 	}
 	value := component.Value
 	if value == nil {
@@ -829,7 +924,8 @@ func (loader *Loader) resolveSchemaRef(doc *T, component *SchemaRef, documentPat
 			return err
 		}
 	}
-	for _, v := range value.Properties {
+	for _, name := range componentNames(value.Properties) {
+		v := value.Properties[name]
 		if err := loader.resolveSchemaRef(doc, v, documentPath, visited); err != nil {
 			return err
 		}
@@ -867,23 +963,25 @@ func (loader *Loader) resolveSecuritySchemeRef(doc *T, component *SecurityScheme
 		return errMUSTSecurityScheme
 	}
 
-	if component.Value != nil {
-		if loader.visitedSecurityScheme == nil {
-			loader.visitedSecurityScheme = make(map[*SecurityScheme]struct{})
-		}
-		if _, ok := loader.visitedSecurityScheme[component.Value]; ok {
+	if ref := component.Ref; ref != "" {
+		if component.Value != nil {
 			return nil
 		}
-		loader.visitedSecurityScheme[component.Value] = struct{}{}
-	}
-
-	if ref := component.Ref; ref != "" {
+		if !loader.shouldVisitRef(ref, func(value any) {
+			component.Value = value.(*SecurityScheme)
+			refPath, _ := loader.resolveRefPath(ref, documentPath)
+			component.setRefPath(refPath)
+		}) {
+			return nil
+		}
+		loader.visitRef(ref)
 		if isSingleRefElement(ref) {
 			var scheme SecurityScheme
 			if _, err = loader.loadSingleElementFromURI(ref, documentPath, &scheme); err != nil {
 				return err
 			}
 			component.Value = &scheme
+			component.setRefPath(documentPath)
 		} else {
 			var resolved SecuritySchemeRef
 			doc, componentPath, err := loader.resolveComponent(doc, ref, documentPath, &resolved)
@@ -897,33 +995,33 @@ func (loader *Loader) resolveSecuritySchemeRef(doc *T, component *SecurityScheme
 				return err
 			}
 			component.Value = resolved.Value
+			component.setRefPath(resolved.RefPath())
 		}
+		defer loader.unvisitRef(ref, component.Value)
 	}
 	return nil
 }
 
 func (loader *Loader) resolveExampleRef(doc *T, component *ExampleRef, documentPath *url.URL) (err error) {
-	if component.isEmpty() {
-		return errMUSTExample
-	}
-
-	if component.Value != nil {
-		if loader.visitedExample == nil {
-			loader.visitedExample = make(map[*Example]struct{})
-		}
-		if _, ok := loader.visitedExample[component.Value]; ok {
+	if ref := component.Ref; ref != "" {
+		if component.Value != nil {
 			return nil
 		}
-		loader.visitedExample[component.Value] = struct{}{}
-	}
-
-	if ref := component.Ref; ref != "" {
+		if !loader.shouldVisitRef(ref, func(value any) {
+			component.Value = value.(*Example)
+			refPath, _ := loader.resolveRefPath(ref, documentPath)
+			component.setRefPath(refPath)
+		}) {
+			return nil
+		}
+		loader.visitRef(ref)
 		if isSingleRefElement(ref) {
 			var example Example
 			if _, err = loader.loadSingleElementFromURI(ref, documentPath, &example); err != nil {
 				return err
 			}
 			component.Value = &example
+			component.setRefPath(documentPath)
 		} else {
 			var resolved ExampleRef
 			doc, componentPath, err := loader.resolveComponent(doc, ref, documentPath, &resolved)
@@ -937,7 +1035,9 @@ func (loader *Loader) resolveExampleRef(doc *T, component *ExampleRef, documentP
 				return err
 			}
 			component.Value = resolved.Value
+			component.setRefPath(resolved.RefPath())
 		}
+		defer loader.unvisitRef(ref, component.Value)
 	}
 	return nil
 }
@@ -947,23 +1047,25 @@ func (loader *Loader) resolveCallbackRef(doc *T, component *CallbackRef, documen
 		return errMUSTCallback
 	}
 
-	if component.Value != nil {
-		if loader.visitedCallback == nil {
-			loader.visitedCallback = make(map[*Callback]struct{})
-		}
-		if _, ok := loader.visitedCallback[component.Value]; ok {
+	if ref := component.Ref; ref != "" {
+		if component.Value != nil {
 			return nil
 		}
-		loader.visitedCallback[component.Value] = struct{}{}
-	}
-
-	if ref := component.Ref; ref != "" {
+		if !loader.shouldVisitRef(ref, func(value any) {
+			component.Value = value.(*Callback)
+			refPath, _ := loader.resolveRefPath(ref, documentPath)
+			component.setRefPath(refPath)
+		}) {
+			return nil
+		}
+		loader.visitRef(ref)
 		if isSingleRefElement(ref) {
 			var resolved Callback
 			if documentPath, err = loader.loadSingleElementFromURI(ref, documentPath, &resolved); err != nil {
 				return err
 			}
 			component.Value = &resolved
+			component.setRefPath(documentPath)
 		} else {
 			var resolved CallbackRef
 			doc, componentPath, err := loader.resolveComponent(doc, ref, documentPath, &resolved)
@@ -977,14 +1079,18 @@ func (loader *Loader) resolveCallbackRef(doc *T, component *CallbackRef, documen
 				return err
 			}
 			component.Value = resolved.Value
+			component.setRefPath(resolved.RefPath())
 		}
+		defer loader.unvisitRef(ref, component.Value)
 	}
 	value := component.Value
 	if value == nil {
 		return nil
 	}
 
-	for _, pathItem := range value.Map() {
+	pathItems := value.Map()
+	for _, name := range componentNames(pathItems) {
+		pathItem := pathItems[name]
 		if err = loader.resolvePathItemRef(doc, pathItem, documentPath); err != nil {
 			return err
 		}
@@ -997,23 +1103,25 @@ func (loader *Loader) resolveLinkRef(doc *T, component *LinkRef, documentPath *u
 		return errMUSTLink
 	}
 
-	if component.Value != nil {
-		if loader.visitedLink == nil {
-			loader.visitedLink = make(map[*Link]struct{})
-		}
-		if _, ok := loader.visitedLink[component.Value]; ok {
+	if ref := component.Ref; ref != "" {
+		if component.Value != nil {
 			return nil
 		}
-		loader.visitedLink[component.Value] = struct{}{}
-	}
-
-	if ref := component.Ref; ref != "" {
+		if !loader.shouldVisitRef(ref, func(value any) {
+			component.Value = value.(*Link)
+			refPath, _ := loader.resolveRefPath(ref, documentPath)
+			component.setRefPath(refPath)
+		}) {
+			return nil
+		}
+		loader.visitRef(ref)
 		if isSingleRefElement(ref) {
 			var link Link
 			if _, err = loader.loadSingleElementFromURI(ref, documentPath, &link); err != nil {
 				return err
 			}
 			component.Value = &link
+			component.setRefPath(documentPath)
 		} else {
 			var resolved LinkRef
 			doc, componentPath, err := loader.resolveComponent(doc, ref, documentPath, &resolved)
@@ -1027,7 +1135,9 @@ func (loader *Loader) resolveLinkRef(doc *T, component *LinkRef, documentPath *u
 				return err
 			}
 			component.Value = resolved.Value
+			component.setRefPath(resolved.RefPath())
 		}
+		defer loader.unvisitRef(ref, component.Value)
 	}
 	return nil
 }
@@ -1042,6 +1152,12 @@ func (loader *Loader) resolvePathItemRef(doc *T, pathItem *PathItem, documentPat
 		if !pathItem.isEmpty() {
 			return
 		}
+		if !loader.shouldVisitRef(ref, func(value any) {
+			*pathItem = *value.(*PathItem)
+		}) {
+			return nil
+		}
+		loader.visitRef(ref)
 		if isSingleRefElement(ref) {
 			var p PathItem
 			if documentPath, err = loader.loadSingleElementFromURI(ref, documentPath, &p); err != nil {
@@ -1059,6 +1175,7 @@ func (loader *Loader) resolvePathItemRef(doc *T, pathItem *PathItem, documentPat
 			*pathItem = resolved
 		}
 		pathItem.Ref = ref
+		defer loader.unvisitRef(ref, pathItem)
 	}
 
 	for _, parameter := range pathItem.Parameters {
@@ -1066,7 +1183,9 @@ func (loader *Loader) resolvePathItemRef(doc *T, pathItem *PathItem, documentPat
 			return
 		}
 	}
-	for _, operation := range pathItem.Operations() {
+	operations := pathItem.Operations()
+	for _, name := range componentNames(operations) {
+		operation := operations[name]
 		for _, parameter := range operation.Parameters {
 			if err = loader.resolveParameterRef(doc, parameter, documentPath); err != nil {
 				return
@@ -1077,12 +1196,15 @@ func (loader *Loader) resolvePathItemRef(doc *T, pathItem *PathItem, documentPat
 				return
 			}
 		}
-		for _, response := range operation.Responses.Map() {
+		responses := operation.Responses.Map()
+		for _, name := range componentNames(responses) {
+			response := responses[name]
 			if err = loader.resolveResponseRef(doc, response, documentPath); err != nil {
 				return
 			}
 		}
-		for _, callback := range operation.Callbacks {
+		for _, name := range componentNames(operation.Callbacks) {
+			callback := operation.Callbacks[name]
 			if err = loader.resolveCallbackRef(doc, callback, documentPath); err != nil {
 				return
 			}
@@ -1093,17 +1215,4 @@ func (loader *Loader) resolvePathItemRef(doc *T, pathItem *PathItem, documentPat
 
 func unescapeRefString(ref string) string {
 	return strings.Replace(strings.Replace(ref, "~1", "/", -1), "~0", "~", -1)
-}
-
-func visitedLimit(visited []string, ref string) bool {
-	visitedCount := 0
-	for _, v := range visited {
-		if v == ref {
-			visitedCount++
-			if visitedCount >= CircularReferenceCounter {
-				return true
-			}
-		}
-	}
-	return false
 }
