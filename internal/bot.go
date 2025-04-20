@@ -122,7 +122,7 @@ func (b *Bot) Start() {
 		if event.BeforeUpdate != nil {
 			optAddedRole = findAddedRole(event.BeforeUpdate.Roles, event.Roles)
 		}
-		b.guildRoleHandler.CheckRoles(event.GuildID, event.Member, resp.JSON200.Accounts, optAddedRole)
+		b.guildRoleHandler.CheckRoles(event.GuildID, event.Member, event.Roles, resp.JSON200.Accounts, optAddedRole)
 		b.guildRoleHandler.CheckGuildTags(event.GuildID, event.Member)
 		b.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, resp.JSON200.Accounts, resp.JSON200.Bans)
 	})
@@ -239,7 +239,7 @@ func (b *Bot) RefreshUser(user *api.User) error {
 
 func (b *Bot) RefreshMember(user *api.User, member *discordgo.Member) error {
 	// Ensure user has correct roles
-	b.guildRoleHandler.CheckRoles(member.GuildID, member, user.Accounts, "")
+	b.guildRoleHandler.CheckRoles(member.GuildID, member, member.Roles, user.Accounts, "")
 
 	err := b.wvw.VerifyWvWWorldRoles(member.GuildID, member, user.Accounts, user.Bans)
 	if err != nil {

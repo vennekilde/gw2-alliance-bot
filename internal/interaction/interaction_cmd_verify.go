@@ -217,7 +217,7 @@ func (c *VerifyCmd) setAPIKey(s *discordgo.Session, event *discordgo.Interaction
 		onError(s, event, errors.New("unexpected response from the server"))
 		return
 	}
-	c.RepCmd.guildRoleHandler.CheckRoles(event.GuildID, event.Member, resp2.JSON200.Accounts, "")
+	c.RepCmd.guildRoleHandler.CheckRoles(event.GuildID, event.Member, event.Member.Roles, resp2.JSON200.Accounts, "")
 
 	// Start guild selection
 	c.RepCmd.onCommandRep(s, event, user)

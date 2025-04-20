@@ -130,13 +130,41 @@ func (g *GuildRoleHandler) CheckGuildTags(guildID string, member *discordgo.Memb
 	}
 }
 
-func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, accounts []api.Account, favoredGuildRoleID string) {
+func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, roles []string, accounts []api.Account, addedRole string) {
 	verificationRole := g.service.GetSetting(guildID, backend.SettingGuildCommonRole)
 	verifiedRoles := g.service.GetSettingSlice(guildID, backend.SettingGuildVerifyRoles)
 	isVerified := false
+	hasVerifiedRole := false
+
+	var fallbackGuildRole string
+	assignAddedRoleIfNeeded := false
+
+	assignedGuildRoles := make(map[string]bool, 8)
+	// Ensure at least a role is evaluated, in case multiple role updates are sent that overwrite each other
+	if addedRole != "" && !slices.Contains(roles, addedRole) {
+		// Add the added role to the list of roles
+		roles = append(roles, addedRole)
+		assignAddedRoleIfNeeded = true
+	}
+
+	// Check if user is a member of the guild that they have a role for¨
+	for _, roleID := range roles {
+		// Flag if user has a the common guild verification role
+		if roleID == verificationRole {
+			hasVerifiedRole = true
+			continue
+		}
+
+		// Check if the role is a guild role
+		role := g.cache.GetRole(guildID, roleID)
+		if role == nil || !RegexRoleNameMatcher.MatchString(role.Name) {
+			continue
+		}
+
+		assignedGuildRoles[role.ID] = false
+	}
 
 	serverCache := g.cache.Servers[guildID]
-	serverGuildRoles := map[string]*discordgo.Role{}
 
 	for _, account := range accounts {
 		if account.Guilds == nil {
@@ -149,14 +177,20 @@ func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, 
 			return // Partial failure, try again later
 		}
 		for _, guild := range gw2Guilds {
-			role := serverCache.FindRoleByTagAndName(fmt.Sprintf("[%s] %s", guild.Tag, guild.Name))
+			guildFQDN := fmt.Sprintf("[%s] %s", guild.Tag, guild.Name)
+			role := serverCache.FindRoleByTagAndName(guildFQDN)
 			if role != nil {
-				serverGuildRoles[role.ID] = role
-				if favoredGuildRoleID == "" {
-					// Just need to pick one as the favored role
-					favoredGuildRoleID = role.ID
+				if fallbackGuildRole == "" {
+					// Keep role as backup
+					fallbackGuildRole = role.ID
 				}
-				if len(verifiedRoles) == 0 || slices.Contains(verifiedRoles, role.ID) {
+
+				if _, ok := assignedGuildRoles[role.ID]; ok {
+					// Mark the role as permitted
+					assignedGuildRoles[role.ID] = true
+				}
+
+				if !isVerified && (len(verifiedRoles) == 0 || slices.Contains(verifiedRoles, role.ID)) {
 					// Ensure they are allowed to be verified
 					if g.CanHaveGuildVerifiedRole(guildID, account.ApiKeys) {
 						isVerified = true
@@ -166,66 +200,62 @@ func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, 
 		}
 	}
 
-	hasVerifiedRole := false
-	var userGuildRoleID string
-	// Check if user is a member of the guild that they have a role for
-nextRole:
-	for _, roleID := range member.Roles {
-		// Flag if user has a the common guild verification role
-		if roleID == verificationRole {
-			hasVerifiedRole = true
-			continue
-		}
-
-		// Check if the role the user has, is the one that got added
-		if roleID == favoredGuildRoleID {
-			if userGuildRoleID != "" {
-				// Remove role if user has multiple guild roles
-				err := g.discord.GuildMemberRoleRemove(guildID, member.User.ID, userGuildRoleID)
-				if err != nil {
-					zap.L().Warn("unable to remove role from member", zap.String("roleID", roleID), zap.Any("member", member), zap.Error(err))
-				}
-			}
-			userGuildRoleID = roleID
-			continue
-		}
-
-		// Check if the role is a guild role
-		role := g.cache.GetRole(guildID, roleID)
-		if role != nil && RegexRoleNameMatcher.MatchString(role.Name) {
-			// Check if user already has a guild role
-			if userGuildRoleID != "" {
-				// Remove role, as user already has another guild role
-				err := g.discord.GuildMemberRoleRemove(guildID, member.User.ID, roleID)
-				if err != nil {
-					zap.L().Warn("unable to remove role from member", zap.String("roleID", roleID), zap.Any("member", member), zap.Error(err))
-				}
-				continue
-			}
-
-			// Check if user is allowed to have this guild role
-			for _, guildRole := range serverGuildRoles {
-				if role.ID == guildRole.ID {
-					userGuildRoleID = role.ID
-					continue nextRole
-				}
-			}
-
-			// Remove role, as user is not allowed to have it if we reach this point
+	// Remove guild roles not allowed
+	for roleID, allowed := range assignedGuildRoles {
+		if !allowed {
 			err := g.discord.GuildMemberRoleRemove(guildID, member.User.ID, roleID)
 			if err != nil {
-				zap.L().Warn("unable to remove role from member", zap.String("roleID", roleID), zap.Any("member", member), zap.Error(err))
+				zap.L().Warn("unable to remove role from member", zap.Any("role", roleID), zap.Any("member", member), zap.Error(err))
 			}
+			delete(assignedGuildRoles, roleID)
 		}
 	}
 
 	// Check if user should have a guild role
 	enforceGuildRep := g.service.GetSetting(guildID, backend.SettingEnforceGuildRep) == "true"
-	if userGuildRoleID == "" && favoredGuildRoleID != "" && enforceGuildRep {
-		// Add guild role, if member only has 1 possible guild role
-		err := g.discord.GuildMemberRoleAdd(guildID, member.User.ID, favoredGuildRoleID)
+	if enforceGuildRep && len(assignedGuildRoles) == 0 && fallbackGuildRole != "" {
+		// Add fallback guild role, if user does not have any guild roles assigned
+		err := g.discord.GuildMemberRoleAdd(guildID, member.User.ID, fallbackGuildRole)
 		if err != nil {
-			zap.L().Warn("unable to add role to member", zap.Any("role", favoredGuildRoleID), zap.Any("member", member), zap.Error(err))
+			zap.L().Warn("unable to add role to member", zap.Any("role", fallbackGuildRole), zap.Any("member", member), zap.Error(err))
+		}
+	} else if assignAddedRoleIfNeeded && len(assignedGuildRoles) == 1 {
+		// Due to multiple role updates, the added role is not in the list of assigned roles
+		if assignedGuildRoles[addedRole] {
+			// Add the added role to the list of assigned roles
+			err := g.discord.GuildMemberRoleAdd(guildID, member.User.ID, addedRole)
+			if err != nil {
+				zap.L().Warn("unable to add role to member", zap.Any("role", addedRole), zap.Any("member", member), zap.Error(err))
+			}
+		}
+	}
+
+	// Check if user has too many guild roles
+	if len(assignedGuildRoles) > 1 {
+		var roleToKeep string
+		// Check if addedRole is in the list of assigned roles
+		if addedRole != "" {
+			if allowed := assignedGuildRoles[addedRole]; allowed {
+				// Keep the added role
+				roleToKeep = addedRole
+			}
+		}
+
+		for roleID := range assignedGuildRoles {
+			if roleToKeep == "" {
+				// Keep the first role we find
+				roleToKeep = roleID
+				continue
+			}
+			if roleID == roleToKeep {
+				// Skip the role we want to keep
+				continue
+			}
+
+			err := g.discord.GuildMemberRoleRemove(guildID, member.User.ID, roleID)
+			if err != nil {
+				zap.L().Warn("unable to remove role from member", zap.Any("role", roleID), zap.Any("member", member), zap.Error(err))
+			}
 		}
 	}
 
