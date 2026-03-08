@@ -9,6 +9,7 @@ import (
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
 	"github.com/vennekilde/gw2-alliance-bot/internal/world"
+	"github.com/vennekilde/gw2-alliance-bot/resources"
 )
 
 type RefreshCmd struct {
@@ -29,8 +30,10 @@ func (c *RefreshCmd) Register(i *Interactions) {
 	// refresh cmd
 	i.addCommand(&Command{
 		command: &discordgo.ApplicationCommand{
-			Name:        "refresh",
-			Description: "Force the Discord bot to refresh your verification status with the verification server",
+			Name:                     resources.T("cmd.refresh.name"),
+			Description:              resources.T("cmd.refresh.description"),
+			NameLocalizations:        resources.GetLocalizations("cmd.refresh.name"),
+			DescriptionLocalizations: resources.GetLocalizations("cmd.refresh.description"),
 		},
 		handler: c.onRefresh,
 	})
@@ -51,6 +54,7 @@ func (c *RefreshCmd) Register(i *Interactions) {
 }
 
 func (c *RefreshCmd) onRefresh(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	locale := GetInteractionLocale(event)
 	members := resolveMembersFromApplicationCommandData(event)
 	for memberID, member := range members {
 		ctx := context.Background()
@@ -59,10 +63,10 @@ func (c *RefreshCmd) onRefresh(s *discordgo.Session, event *discordgo.Interactio
 			onError(s, event, err)
 			return
 		} else if resp.StatusCode() == http.StatusNotFound {
-			onError(s, event, errors.New("you are not verified"))
+			onError(s, event, errors.New(resources.TL(locale, "errors.not_verified")))
 			return
 		} else if resp.JSON200 == nil {
-			onError(s, event, errors.New("unexpected response from the server"))
+			onError(s, event, errors.New(resources.TL(locale, "errors.unexpected_response")))
 			return
 		}
 

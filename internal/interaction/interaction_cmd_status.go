@@ -8,6 +8,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
+	"github.com/vennekilde/gw2-alliance-bot/resources"
 )
 
 type StatusCmd struct {
@@ -26,8 +27,10 @@ func (c *StatusCmd) Register(i *Interactions) {
 	// Status cmd
 	i.addCommand(&Command{
 		command: &discordgo.ApplicationCommand{
-			Name:        "status",
-			Description: "Display your current verification status",
+			Name:                     resources.T("cmd.status.name"),
+			Description:              resources.T("cmd.status.description"),
+			NameLocalizations:        resources.GetLocalizations("cmd.status.name"),
+			DescriptionLocalizations: resources.GetLocalizations("cmd.status.description"),
 		},
 		handler: c.onCommandStatus,
 	})
@@ -49,6 +52,7 @@ func (c *StatusCmd) Register(i *Interactions) {
 }
 
 func (c *StatusCmd) onCommandStatus(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	locale := GetInteractionLocale(event)
 	members := resolveMembersFromApplicationCommandData(event)
 	for memberID, member := range members {
 		ctx := context.Background()
@@ -57,10 +61,10 @@ func (c *StatusCmd) onCommandStatus(s *discordgo.Session, event *discordgo.Inter
 			onError(s, event, err)
 			return
 		} else if resp.StatusCode() == http.StatusNotFound {
-			onError(s, event, errors.New("you are not verified"))
+			onError(s, event, errors.New(resources.TL(locale, "errors.not_verified")))
 			return
 		} else if resp.JSON200 == nil {
-			onError(s, event, errors.New("unexpected response from the server"))
+			onError(s, event, errors.New(resources.TL(locale, "errors.unexpected_response")))
 			return
 		}
 
@@ -70,17 +74,18 @@ func (c *StatusCmd) onCommandStatus(s *discordgo.Session, event *discordgo.Inter
 }
 
 func (c *StatusCmd) sendFollowupStatusMessage(s *discordgo.Session, event *discordgo.InteractionCreate, memberID string, member *discordgo.Member, user *api.User) {
+	locale := GetInteractionLocale(event)
 	author := authorFromInteraction(event, member, memberID)
 
-	accountTableFields := c.ui.buildStatusFields(user)
+	accountTableFields := c.ui.buildStatusFields(user, locale)
 
 	activeBan := api.ActiveBan(user.Bans)
 	expired := len(user.Accounts) == 0
 	embeds := []*discordgo.MessageEmbed{
 		{
 			Color:       linkStatusColor(&expired, nil, activeBan != nil, 0x57F287, 0xED4245, 0x95A5A6), // green, red, lightgrey
-			Title:       "Overview",
-			Description: "Accounts linked with your discord user",
+			Title:       resources.TL(locale, "status.overview.title"),
+			Description: resources.TL(locale, "status.overview.description"),
 			Fields:      accountTableFields,
 			Author:      author,
 		},

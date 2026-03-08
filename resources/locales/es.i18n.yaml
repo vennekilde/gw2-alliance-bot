@@ -1,0 +1,152 @@
+# Descripciones de comandos
+cmd:
+  verify:
+    name: "verify"
+    description: "Añade una o más claves API de Gw2 a tu cuenta de Discord. Puedes vincular múltiples cuentas de Gw2."
+  status:
+    name: "status"
+    description: "Muestra tu estado de verificación actual"
+  apikeys:
+    name: "apikeys"
+    description: "Lista de claves API activas vinculadas a tu cuenta de Discord"
+  refresh:
+    name: "refresh"
+    description: "Fuerza la actualización de tu estado de verificación con el servidor"
+  rep:
+    name: "rep"
+    description: "Elige un gremio para representar"
+  settings:
+    name: "settings"
+    description: "Modifica la configuración del Bot de Alianza de Guild Wars 2"
+
+# Comando Verify
+verify:
+  instructions:
+    title: "Instrucciones"
+    step1:
+      title: "1. Haz clic en \"Crear clave API\""
+      content: "Asegúrate de que la clave API cumple con los siguientes criterios:\n\n**Nombra tu clave API**\n`{{.apiKeyPrefix}}{{.code}}`\n\n**Permisos**\n- Characters\n- Progression\n- WvW\n(Ver la imagen a continuación)"
+    step2:
+      title: "2. Haz clic en \"Establecer clave API\""
+      content: "Inserta tu clave API recién creada del paso 1."
+  buttons:
+    create_api_key: "Crear clave API"
+    set_api_key: "Establecer clave API"
+  modal:
+    title: "Insertar clave API"
+    content: "Crea tu clave API en https://account.arena.net/applications/create. Permisos: Characters, Progression & WvW"
+    label: "Clave API"
+    placeholder: "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXXXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+  success:
+    title: "¡Éxito!"
+    description: "Tu clave API ha sido añadida al sistema"
+    footer: "Comprobando si eres elegible para unirte a un rol de gremio..."
+  errors:
+    unable_to_set: "No se pudo establecer la clave API - razón desconocida"
+
+# Comando Status
+status:
+  overview:
+    title: "Resumen"
+    description: "Cuentas vinculadas con tu usuario de Discord"
+  fields:
+    account: "Cuenta"
+    world: "Mundo"
+    wvw_team: "Equipo McM"
+    wvw_guild: "Gremio McM"
+    status: "Estado"
+    updated: "Actualizado"
+    guilds: "Gremios"
+    temporary_access: "Acceso temporal"
+    world_temporary: "Mundo (Temporal)"
+    expires: "Caduca"
+  status_values:
+    active: "Activo"
+    banned: "Baneado"
+    temporary: "Temporal"
+    not_linked: "¡No vinculado con la cuenta de Guild Wars 2!\nEscribe /verify para vincular con tu cuenta de Guild Wars 2"
+    unassigned: "Sin asignar"
+  temporary_access_description: "Mundos a los que se te ha concedido acceso temporal"
+  expires_format:
+    days: "{{.days}} días"
+
+# Comando API Keys
+apikeys:
+  title: "Clave API - {{.name}}"
+  fields:
+    account: "Cuenta"
+    permissions: "Permisos"
+  footer: "Última sincronización"
+
+# Comando Rep
+rep:
+  content: "Elige un gremio para representar"
+  no_roles:
+    title: "Roles de Gremio / Alianza"
+    description: "No se encontró ningún rol de gremio o alianza en este servidor aplicable a tu cuenta de Guild Wars 2\n\t\t\t\t\tContacta con la administración del servidor si tienes preguntas"
+  success:
+    title: "¡Representando {{.roleName}}!"
+    description: "Se te ha otorgado el rol: {{.roleName}}"
+  account_rep:
+    content: "Elige una cuenta para representar en este servidor"
+  account_updated:
+    title: "Nombre de cuenta actualizado"
+    description: "Tu apodo ha sido actualizado con el nombre de cuenta: {{.accountName}}"
+  errors:
+    guild_only: "Este comando solo puede usarse dentro de un canal de servidor de Discord"
+    unable_to_verify_eligible: "No se pudo verificar si aún eres elegible para representar el gremio"
+    unable_to_fetch_guilds: "No se pudieron obtener todos los gremios, probablemente un problema con la API de GW2, inténtalo más tarde"
+    unable_to_fetch_guild_info: "No se pudo obtener información del gremio, inténtalo más tarde"
+    unable_to_find_role: "No se pudo encontrar el rol con nombre: {{.roleName}}"
+    invalid_command: "Comando inválido"
+
+# Comando Settings
+settings:
+  wvw_world:
+    title: "Configuración del Mundo McM"
+    placeholder_eu: "Selecciona un mundo de EU"
+    placeholder_eu_national: "Selecciona un mundo nacional de EU"
+    placeholder_na: "Selecciona un mundo de NA"
+    button_disable: "Desactivar"
+    updated: "Mapeo del mundo McM actualizado a {{.world}}"
+    disabled: "desactivado"
+  wvw_roles:
+    title: "Roles del Mundo McM"
+    primary_placeholder: "Selecciona un rol para el mundo principal"
+    linked_placeholder: "Selecciona un rol para el mundo vinculado"
+    associated_placeholder: "Selecciona roles asociados que se eliminarán si el usuario no está en el mundo principal o vinculado"
+    primary_updated: "Rol del mundo principal actualizado a <@&{{.roleId}}>"
+    linked_updated: "Rol del mundo vinculado actualizado a <@&{{.roleId}}>"
+    associated_updated: "Roles McM asociados actualizados a <@&{{.roleIds}}>"
+  account_rep:
+    title: "La representación de cuenta añadirá el nombre de cuenta al apodo del usuario"
+    button_enable: "Activar"
+    button_disable: "Desactivar"
+  guild_rep:
+    title: "Configuración de representación de gremio"
+    button_enable: "Anteponer etiqueta de gremio al apodo"
+    button_disable: "Desactivar anteposición de etiqueta de gremio"
+    button_enforce_enable: "Forzar Representación de Gremio"
+    button_enforce_disable: "Desactivar Forzado"
+  guild_verification:
+    title: "El rol de gremio común se añadirá a todos los usuarios que también estén en un rol de gremio"
+    common_role_placeholder: "Selecciona un rol de gremio común"
+    verify_roles_placeholder: "Selecciona gremios que serán verificados con el rol común"
+    permissions_placeholder: "Selecciona permisos requeridos para la clave API"
+  errors:
+    server_only: "Este comando solo puede usarse en un servidor"
+    invalid_role_setting: "Configuración de rol inválida"
+    invalid_world_index: "Índice de mundo inválido"
+    invalid_role_empty: "Rol inválido (vacío)"
+
+# Errores generales
+errors:
+  not_verified: "No estás verificado"
+  unexpected_response: "Respuesta inesperada del servidor"
+  command_execution: "Error al ejecutar el comando"
+  interaction_error: "Error al ejecutar el comando"
+  interaction_handling: "Error al manejar la interacción"
+  processing_data: "Error al procesar los datos"
+  error_title: "¡Error!"
+  error_description: "Hubo un problema al procesar tu solicitud"
+  message_field: "Mensaje"

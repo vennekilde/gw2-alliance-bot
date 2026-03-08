@@ -1,0 +1,152 @@
+# Befehlsbeschreibungen
+cmd:
+  verify:
+    name: "verify"
+    description: "Füge Gw2 API-Schlüssel zu deinem Discord-Konto hinzu. Du kannst mehrere Konten verknüpfen."
+  status:
+    name: "status"
+    description: "Zeige deinen aktuellen Verifizierungsstatus an"
+  apikeys:
+    name: "apikeys"
+    description: "Liste der aktiven API-Schlüssel, die mit deinem Discord-Konto verknüpft sind"
+  refresh:
+    name: "refresh"
+    description: "Erzwinge die Aktualisierung deines Verifizierungsstatus mit dem Server"
+  rep:
+    name: "rep"
+    description: "Wähle eine Gilde zum Repräsentieren"
+  settings:
+    name: "settings"
+    description: "Einstellungen für den Guild Wars 2 Alliance Bot ändern"
+
+# Verify-Befehl
+verify:
+  instructions:
+    title: "Anleitung"
+    step1:
+      title: "1. Klicke auf \"API-Schlüssel erstellen\""
+      content: "Stelle sicher, dass der API-Schlüssel die folgenden Kriterien erfüllt:\n\n**Benenne deinen API-Schlüssel**\n`{{.apiKeyPrefix}}{{.code}}`\n\n**Berechtigungen**\n- Characters\n- Progression\n- WvW\n(Siehe Bild unten)"
+    step2:
+      title: "2. Klicke auf \"API-Schlüssel festlegen\""
+      content: "Füge deinen neu erstellten API-Schlüssel aus Schritt 1 ein."
+  buttons:
+    create_api_key: "API-Schlüssel erstellen"
+    set_api_key: "API-Schlüssel festlegen"
+  modal:
+    title: "API-Schlüssel einfügen"
+    content: "Erstelle deinen API-Schlüssel auf https://account.arena.net/applications/create. Berechtigungen: Characters, Progression & WvW"
+    label: "API-Schlüssel"
+    placeholder: "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXXXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+  success:
+    title: "Erfolg!"
+    description: "Dein API-Schlüssel wurde zum System hinzugefügt"
+    footer: "Überprüfe, ob du berechtigt bist, einer Gildenrolle beizutreten..."
+  errors:
+    unable_to_set: "API-Schlüssel konnte nicht gesetzt werden - Grund unbekannt"
+
+# Status-Befehl
+status:
+  overview:
+    title: "Übersicht"
+    description: "Konten, die mit deinem Discord-Benutzer verknüpft sind"
+  fields:
+    account: "Konto"
+    world: "Welt"
+    wvw_team: "WvW-Team"
+    wvw_guild: "WvW-Gilde"
+    status: "Status"
+    updated: "Aktualisiert"
+    guilds: "Gilden"
+    temporary_access: "Temporärer Zugriff"
+    world_temporary: "Welt (Temporär)"
+    expires: "Läuft ab"
+  status_values:
+    active: "Aktiv"
+    banned: "Gesperrt"
+    temporary: "Temporär"
+    not_linked: "Nicht mit Guild Wars 2-Konto verknüpft!\nGib /verify ein, um dich mit deinem Guild Wars 2-Konto zu verknüpfen"
+    unassigned: "Nicht zugewiesen"
+  temporary_access_description: "Welten, für die dir ein temporärer Zugriff gewährt wurde"
+  expires_format:
+    days: "{{.days}} Tage"
+
+# API Keys-Befehl
+apikeys:
+  title: "API-Schlüssel - {{.name}}"
+  fields:
+    account: "Konto"
+    permissions: "Berechtigungen"
+  footer: "Letzte Synchronisierung"
+
+# Rep-Befehl
+rep:
+  content: "Wähle eine Gilde zum Repräsentieren"
+  no_roles:
+    title: "Gilden- / Allianz-Rollen"
+    description: "Es wurde keine Gilden- oder Allianzrolle auf diesem Server gefunden, die für dein Guild Wars 2-Konto geeignet ist\n\t\t\t\t\tWende dich bei Fragen an die Serververwaltung"
+  success:
+    title: "Repräsentiere {{.roleName}}!"
+    description: "Dir wurde die Rolle zugewiesen: {{.roleName}}"
+  account_rep:
+    content: "Wähle ein Konto, das du auf diesem Server repräsentieren möchtest"
+  account_updated:
+    title: "Kontoname aktualisiert"
+    description: "Dein Nickname wurde mit dem Kontonamen aktualisiert: {{.accountName}}"
+  errors:
+    guild_only: "Dieser Befehl kann nur in einem Discord-Serverkanal verwendet werden"
+    unable_to_verify_eligible: "Es konnte nicht überprüft werden, ob du noch berechtigt bist, die Gilde zu repräsentieren"
+    unable_to_fetch_guilds: "Alle Gilden konnten nicht abgerufen werden, wahrscheinlich ein Problem mit der GW2-API, versuche es später erneut"
+    unable_to_fetch_guild_info: "Gildeninformationen konnten nicht abgerufen werden, versuche es später erneut"
+    unable_to_find_role: "Rolle mit Name konnte nicht gefunden werden: {{.roleName}}"
+    invalid_command: "Ungültiger Befehl"
+
+# Settings-Befehl
+settings:
+  wvw_world:
+    title: "WvW-Welt-Einstellungen"
+    placeholder_eu: "Wähle eine Welt aus EU"
+    placeholder_eu_national: "Wähle eine nationale Welt aus EU"
+    placeholder_na: "Wähle eine Welt aus NA"
+    button_disable: "Deaktivieren"
+    updated: "WvW-Weltzuordnung aktualisiert auf {{.world}}"
+    disabled: "deaktiviert"
+  wvw_roles:
+    title: "WvW-Welt-Rollen"
+    primary_placeholder: "Wähle eine Rolle für die Hauptwelt"
+    linked_placeholder: "Wähle eine Rolle für die verknüpfte Welt"
+    associated_placeholder: "Wähle zugeordnete Rollen aus, die entfernt werden, wenn der Benutzer sich nicht in der Haupt- oder verknüpften Welt befindet"
+    primary_updated: "Hauptwelt-Rolle aktualisiert auf <@&{{.roleId}}>"
+    linked_updated: "Verknüpfte-Welt-Rolle aktualisiert auf <@&{{.roleId}}>"
+    associated_updated: "Zugeordnete WvW-Rollen aktualisiert auf <@&{{.roleIds}}>"
+  account_rep:
+    title: "Kontorepräsentation hängt den Kontonamen an den Nickname des Benutzers an"
+    button_enable: "Aktivieren"
+    button_disable: "Deaktivieren"
+  guild_rep:
+    title: "Gildenrepräsentationseinstellungen"
+    button_enable: "Gildentag dem Nickname voranstellen"
+    button_disable: "Gildentag-Voranstellung deaktivieren"
+    button_enforce_enable: "Gildenrep erzwingen"
+    button_enforce_disable: "Erzwingung deaktivieren"
+  guild_verification:
+    title: "Die gemeinsame Gildenrolle wird allen Benutzern hinzugefügt, die sich auch in einer Gildenrolle befinden"
+    common_role_placeholder: "Wähle eine gemeinsame Gildenrolle"
+    verify_roles_placeholder: "Wähle Gilden aus, die mit der gemeinsamen Rolle verifiziert werden"
+    permissions_placeholder: "Wähle erforderliche API-Schlüssel-Berechtigungen"
+  errors:
+    server_only: "Dieser Befehl kann nur auf einem Server verwendet werden"
+    invalid_role_setting: "Ungültige Rolleneinstellung"
+    invalid_world_index: "Ungültiger Weltindex"
+    invalid_role_empty: "Ungültige Rolle (leer)"
+
+# Allgemeine Fehler
+errors:
+  not_verified: "Du bist nicht verifiziert"
+  unexpected_response: "Unerwartete Antwort vom Server"
+  command_execution: "Fehler beim Ausführen des Befehls"
+  interaction_error: "Fehler beim Ausführen des Befehls"
+  interaction_handling: "Fehler beim Verarbeiten der Interaktion"
+  processing_data: "Fehler beim Verarbeiten der Daten"
+  error_title: "Fehler!"
+  error_description: "Es gab ein Problem bei der Verarbeitung deiner Anfrage"
+  message_field: "Nachricht"

@@ -1,0 +1,152 @@
+# Descriptions des commandes
+cmd:
+  verify:
+    name: "verify"
+    description: "Ajoute une ou plusieurs clés API Gw2 à ton compte Discord. Tu peux lier plusieurs comptes Gw2."
+  status:
+    name: "status"
+    description: "Affiche ton statut de vérification actuel"
+  apikeys:
+    name: "apikeys"
+    description: "Liste des clés API actives liées à ton compte Discord"
+  refresh:
+    name: "refresh"
+    description: "Force l'actualisation de ton statut de vérification avec le serveur"
+  rep:
+    name: "rep"
+    description: "Choisis une guilde à représenter"
+  settings:
+    name: "settings"
+    description: "Modifier les paramètres du Bot Alliance Guild Wars 2"
+
+# Commande Verify
+verify:
+  instructions:
+    title: "Instructions"
+    step1:
+      title: "1. Clique sur \"Créer une clé API\""
+      content: "Assure-toi que la clé API répond aux critères suivants :\n\n**Nomme ta clé API**\n`{{.apiKeyPrefix}}{{.code}}`\n\n**Permissions**\n- Characters\n- Progression\n- WvW\n(Voir l'image ci-dessous)"
+    step2:
+      title: "2. Clique sur \"Définir la clé API\""
+      content: "Insère ta clé API nouvellement créée de l'étape 1."
+  buttons:
+    create_api_key: "Créer une clé API"
+    set_api_key: "Définir la clé API"
+  modal:
+    title: "Insérer la clé API"
+    content: "Crée ta clé API sur https://account.arena.net/applications/create. Permissions : Characters, Progression & WvW"
+    label: "Clé API"
+    placeholder: "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXXXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+  success:
+    title: "Succès !"
+    description: "Ta clé API a été ajoutée au système"
+    footer: "Vérification de ton éligibilité à rejoindre un rôle de guilde..."
+  errors:
+    unable_to_set: "Impossible de définir la clé API - raison inconnue"
+
+# Commande Status
+status:
+  overview:
+    title: "Aperçu"
+    description: "Comptes liés à ton utilisateur Discord"
+  fields:
+    account: "Compte"
+    world: "Monde"
+    wvw_team: "Équipe McM"
+    wvw_guild: "Guilde McM"
+    status: "Statut"
+    updated: "Mis à jour"
+    guilds: "Guildes"
+    temporary_access: "Accès temporaire"
+    world_temporary: "Monde (Temporaire)"
+    expires: "Expire"
+  status_values:
+    active: "Actif"
+    banned: "Banni"
+    temporary: "Temporaire"
+    not_linked: "Non lié au compte Guild Wars 2 !\nTape /verify pour lier ton compte Guild Wars 2"
+    unassigned: "Non assigné"
+  temporary_access_description: "Mondes auxquels tu as été accordé un accès temporaire"
+  expires_format:
+    days: "{{.days}} jours"
+
+# Commande API Keys
+apikeys:
+  title: "Clé API - {{.name}}"
+  fields:
+    account: "Compte"
+    permissions: "Permissions"
+  footer: "Dernière synchronisation"
+
+# Commande Rep
+rep:
+  content: "Choisis une guilde à représenter"
+  no_roles:
+    title: "Rôles de Guilde / Alliance"
+    description: "Aucun rôle de guilde ou d'alliance trouvé sur ce serveur applicable à ton compte Guild Wars 2\n\t\t\t\t\tContacte la gestion du serveur si tu as des questions"
+  success:
+    title: "Représente {{.roleName}} !"
+    description: "Le rôle t'a été accordé : {{.roleName}}"
+  account_rep:
+    content: "Choisis un compte à représenter sur ce serveur"
+  account_updated:
+    title: "Nom de compte mis à jour"
+    description: "Ton pseudo a été mis à jour avec le nom de compte : {{.accountName}}"
+  errors:
+    guild_only: "Cette commande ne peut être utilisée que dans un canal de serveur Discord"
+    unable_to_verify_eligible: "Impossible de vérifier si tu es toujours éligible pour représenter la guilde"
+    unable_to_fetch_guilds: "Impossible de récupérer toutes les guildes, problème probable avec l'API GW2, réessaye plus tard"
+    unable_to_fetch_guild_info: "Impossible de récupérer les informations de la guilde, réessaye plus tard"
+    unable_to_find_role: "Impossible de trouver le rôle avec le nom : {{.roleName}}"
+    invalid_command: "Commande invalide"
+
+# Commande Settings
+settings:
+  wvw_world:
+    title: "Paramètres du Monde McM"
+    placeholder_eu: "Sélectionne un monde de l'UE"
+    placeholder_eu_national: "Sélectionne un monde national de l'UE"
+    placeholder_na: "Sélectionne un monde de NA"
+    button_disable: "Désactiver"
+    updated: "Mappage du monde McM mis à jour vers {{.world}}"
+    disabled: "désactivé"
+  wvw_roles:
+    title: "Rôles du Monde McM"
+    primary_placeholder: "Sélectionne un rôle pour le monde principal"
+    linked_placeholder: "Sélectionne un rôle pour le monde lié"
+    associated_placeholder: "Sélectionne les rôles associés qui seront supprimés si l'utilisateur n'est pas dans le monde principal ou lié"
+    primary_updated: "Rôle du monde principal mis à jour vers <@&{{.roleId}}>"
+    linked_updated: "Rôle du monde lié mis à jour vers <@&{{.roleId}}>"
+    associated_updated: "Rôles McM associés mis à jour vers <@&{{.roleIds}}>"
+  account_rep:
+    title: "La représentation de compte ajoutera le nom du compte au pseudo de l'utilisateur"
+    button_enable: "Activer"
+    button_disable: "Désactiver"
+  guild_rep:
+    title: "Paramètres de représentation de guilde"
+    button_enable: "Ajouter le tag de guilde au pseudo"
+    button_disable: "Désactiver l'ajout du tag de guilde au pseudo"
+    button_enforce_enable: "Forcer la Représentation de Guilde"
+    button_enforce_disable: "Désactiver le Forçage"
+  guild_verification:
+    title: "Le rôle de guilde commun sera ajouté à tous les utilisateurs qui sont également dans un rôle de guilde"
+    common_role_placeholder: "Sélectionne un rôle de guilde commun"
+    verify_roles_placeholder: "Sélectionne les guildes qui seront vérifiées avec le rôle commun"
+    permissions_placeholder: "Sélectionne les permissions requises pour la clé API"
+  errors:
+    server_only: "Cette commande ne peut être utilisée que sur un serveur"
+    invalid_role_setting: "Paramètre de rôle invalide"
+    invalid_world_index: "Index de monde invalide"
+    invalid_role_empty: "Rôle invalide (vide)"
+
+# Erreurs générales
+errors:
+  not_verified: "Tu n'es pas vérifié"
+  unexpected_response: "Réponse inattendue du serveur"
+  command_execution: "Erreur lors de l'exécution de la commande"
+  interaction_error: "Erreur lors de l'exécution de la commande"
+  interaction_handling: "Erreur lors du traitement de l'interaction"
+  processing_data: "Erreur lors du traitement des données"
+  error_title: "Erreur !"
+  error_description: "Un problème est survenu lors du traitement de ta demande"
+  message_field: "Message"

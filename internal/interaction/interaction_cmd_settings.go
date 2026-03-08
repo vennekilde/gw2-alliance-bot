@@ -10,6 +10,7 @@ import (
 	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
 	"github.com/vennekilde/gw2-alliance-bot/internal/guild"
 	"github.com/vennekilde/gw2-alliance-bot/internal/world"
+	"github.com/vennekilde/gw2-alliance-bot/resources"
 	"go.uber.org/zap"
 )
 
@@ -96,19 +97,22 @@ func (c *SettingsCmd) Register(i *Interactions) {
 	// Settings command
 	i.addCommand(&Command{
 		command: &discordgo.ApplicationCommand{
-			Name:                     "settings",
-			Description:              "Modify settings for the Guild Wars 2 Alliance Bot",
+			Name:                     resources.T("cmd.settings.name"),
+			Description:              resources.T("cmd.settings.description"),
+			NameLocalizations:        resources.GetLocalizations("cmd.settings.name"),
+			DescriptionLocalizations: resources.GetLocalizations("cmd.settings.description"),
 			DefaultMemberPermissions: &permission,
 			DMPermission:             &permissionDM,
 		},
 		handler: func(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 			//ctx := context.Background()
+			locale := GetInteractionLocale(event)
 			currentWorld := c.service.GetSetting(event.GuildID, backend.SettingWvWWorld)
 			currentWorldID, _ := strconv.Atoi(currentWorld)
 			wvwWorldSelectComponents := buildWvWWorldSelectMenu(currentWorldID)
 
 			_, err := s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-				Content:    "WvW World Settings",
+				Content:    resources.TL(locale, "settings.wvw_world.title"),
 				Flags:      discordgo.MessageFlagsEphemeral,
 				Components: wvwWorldSelectComponents,
 			})
@@ -121,7 +125,7 @@ func (c *SettingsCmd) Register(i *Interactions) {
 			worldRoleSelectComponents := buildWorldRoleSelectMenu(currentPrimaryRole, currentLinkedRole)
 
 			_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-				Content:    "WvW World Roles",
+				Content:    resources.TL(locale, "settings.wvw_roles.title"),
 				Flags:      discordgo.MessageFlagsEphemeral,
 				Components: worldRoleSelectComponents,
 			})
@@ -131,7 +135,7 @@ func (c *SettingsCmd) Register(i *Interactions) {
 
 			accRepComponents := c.buildAccountRepToggle(event.GuildID)
 			_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-				Content:    "Account rep will append the account name to a user's nickname",
+				Content:    resources.TL(locale, "settings.account_rep.title"),
 				Flags:      discordgo.MessageFlagsEphemeral,
 				Components: accRepComponents,
 			})
@@ -141,7 +145,7 @@ func (c *SettingsCmd) Register(i *Interactions) {
 
 			guildTagRepComponents := c.buildGuildTagRepToggle(event.GuildID)
 			_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-				Content:    "Guild representation settings",
+				Content:    resources.TL(locale, "settings.guild_rep.title"),
 				Flags:      discordgo.MessageFlagsEphemeral,
 				Components: guildTagRepComponents,
 			})
@@ -159,7 +163,7 @@ func (c *SettingsCmd) Register(i *Interactions) {
 
 			guildCommonRoleComponents := c.buildGuildVerificationMenu(roles, currentCommonGuildRole, currentGuildVerifyRoles, currentRequiredPermissions)
 			_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-				Content:    "The common guild role will be added to all users that are also in a guild role",
+				Content:    resources.TL(locale, "settings.guild_verification.title"),
 				Flags:      discordgo.MessageFlagsEphemeral,
 				Components: guildCommonRoleComponents,
 			})
@@ -178,7 +182,7 @@ func buildWvWWorldSelectMenu(currentWorldID int) []discordgo.MessageComponent {
 	euNationalWorldOptions := make([]discordgo.SelectMenuOption, 0, len(worlds))
 	naWorldOptions := make([]discordgo.SelectMenuOption, 0, len(worlds))
 	disable := discordgo.Button{
-		Label:    "Disable",
+		Label:    resources.T("settings.wvw_world.button_disable"),
 		Style:    discordgo.DangerButton,
 		CustomID: InteractionIDSettingsSetWvWWorldDisable,
 	}
@@ -203,17 +207,17 @@ func buildWvWWorldSelectMenu(currentWorldID int) []discordgo.MessageComponent {
 
 	eu := discordgo.SelectMenu{
 		CustomID:    InteractionIDSettingsSetWvWWorldEU,
-		Placeholder: "Select a world from EU",
+		Placeholder: resources.T("settings.wvw_world.placeholder_eu"),
 		Options:     euWorldOptions,
 	}
 	euNational := discordgo.SelectMenu{
 		CustomID:    InteractionIDSettingsSetWvWWorldEUNational,
-		Placeholder: "Select a national world from EU",
+		Placeholder: resources.T("settings.wvw_world.placeholder_eu_national"),
 		Options:     euNationalWorldOptions,
 	}
 	na := discordgo.SelectMenu{
 		CustomID:    InteractionIDSettingsSetWvWWorldNA,
-		Placeholder: "Select a world from NA",
+		Placeholder: resources.T("settings.wvw_world.placeholder_na"),
 		Options:     naWorldOptions,
 	}
 	return []discordgo.MessageComponent{
@@ -237,7 +241,7 @@ func buildWorldRoleSelectMenu(currentPrimaryRoleID string, currentLinkedRoleID s
 	primary := discordgo.SelectMenu{
 		MenuType:    discordgo.RoleSelectMenu,
 		CustomID:    InteractionIDSettingsSetPrimaryWorldRole,
-		Placeholder: "Select a role for primary world",
+		Placeholder: resources.T("settings.wvw_roles.primary_placeholder"),
 		MinValues:   &minValues,
 	}
 	if currentPrimaryRoleID != "" {
@@ -252,7 +256,7 @@ func buildWorldRoleSelectMenu(currentPrimaryRoleID string, currentLinkedRoleID s
 	linked := discordgo.SelectMenu{
 		MenuType:    discordgo.RoleSelectMenu,
 		CustomID:    InteractionIDSettingsSetLinkedWorldRole,
-		Placeholder: "Select a role for linked world",
+		Placeholder: resources.T("settings.wvw_roles.linked_placeholder"),
 		MinValues:   &minValues,
 	}
 	if currentLinkedRoleID != "" {
@@ -267,7 +271,7 @@ func buildWorldRoleSelectMenu(currentPrimaryRoleID string, currentLinkedRoleID s
 	associated := discordgo.SelectMenu{
 		MenuType:    discordgo.RoleSelectMenu,
 		CustomID:    InteractionIDSettingsSetWvWAssociatedRoles,
-		Placeholder: "Select associated roles that will be removed if user is not in the primary or linked world",
+		Placeholder: resources.T("settings.wvw_roles.associated_placeholder"),
 		MinValues:   &minValues,
 		MaxValues:   25,
 	}
@@ -287,11 +291,11 @@ func buildWorldRoleSelectMenu(currentPrimaryRoleID string, currentLinkedRoleID s
 
 func (c *SettingsCmd) buildAccountRepToggle(guildID string) []discordgo.MessageComponent {
 	accRepEnabled := c.service.GetSetting(guildID, backend.SettingAccRepEnabled)
-	label := "Enable"
+	label := resources.T("settings.account_rep.button_enable")
 	customID := InteractionIDSettingsSetAccRepEnable
 	style := discordgo.SuccessButton
 	if accRepEnabled == "true" {
-		label = "Disable"
+		label = resources.T("settings.account_rep.button_disable")
 		customID = InteractionIDSettingsSetAccRepDisable
 		style = discordgo.DangerButton
 	}
@@ -311,21 +315,21 @@ func (c *SettingsCmd) buildAccountRepToggle(guildID string) []discordgo.MessageC
 
 func (c *SettingsCmd) buildGuildTagRepToggle(guildID string) []discordgo.MessageComponent {
 	guildRepEnabled := c.service.GetSetting(guildID, backend.SettingGuildTagRepEnabled)
-	label := "Prepend guild tag to nickname"
+	label := resources.T("settings.guild_rep.button_enable")
 	customID := InteractionIDSettingsSetGuildTagRepEnable
 	style := discordgo.SuccessButton
 	if guildRepEnabled == "true" {
-		label = "Disable prepend guild tag to nickname"
+		label = resources.T("settings.guild_rep.button_disable")
 		customID = InteractionIDSettingsSetGuildTagRepDisable
 		style = discordgo.DangerButton
 	}
 
 	guildRepEnforcement := c.service.GetSetting(guildID, backend.SettingEnforceGuildRep)
-	labelEnforcement := "Enforce Guild Rep"
+	labelEnforcement := resources.T("settings.guild_rep.button_enforce_enable")
 	customIDEnforcement := InteractionIDSettingsSetEnforceGuildTagRepEnable
 	styleEnforcement := discordgo.SuccessButton
 	if guildRepEnforcement == "true" {
-		labelEnforcement = "Disable Enforcement"
+		labelEnforcement = resources.T("settings.guild_rep.button_enforce_disable")
 		customIDEnforcement = InteractionIDSettingsSetEnforceGuildTagRepDisable
 		styleEnforcement = discordgo.DangerButton
 	}
@@ -357,7 +361,7 @@ func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, curren
 	rolesSelect := discordgo.SelectMenu{
 		MenuType:    discordgo.RoleSelectMenu,
 		CustomID:    InteractionIDSettingsSetGuildCommonRole,
-		Placeholder: "Select a common guild role",
+		Placeholder: resources.T("settings.guild_verification.common_role_placeholder"),
 		MinValues:   &zero,
 	}
 	if currentCommonGuildRole != "" {
@@ -388,7 +392,7 @@ func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, curren
 	guildRolesSelect := discordgo.SelectMenu{
 		MenuType:    discordgo.StringSelectMenu,
 		CustomID:    InteractionIDSettingsSetGuildVerifyRoles,
-		Placeholder: "Select guilds that will be verified with the common role",
+		Placeholder: resources.T("settings.guild_verification.verify_roles_placeholder"),
 		MinValues:   &zero,
 		MaxValues:   len(guildRolesOptions),
 		Options:     guildRolesOptions,
@@ -422,7 +426,7 @@ func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, curren
 	requiredAPIKeyPermissionsSelect := discordgo.SelectMenu{
 		MenuType:    discordgo.StringSelectMenu,
 		CustomID:    InteractionIDSettingsSetAPIKeyPermissions,
-		Placeholder: "Select required API key permissions",
+		Placeholder: resources.T("settings.guild_verification.permissions_placeholder"),
 		MinValues:   &zero,
 		MaxValues:   len(permissionsOptions),
 		Options:     permissionsOptions,
@@ -455,11 +459,11 @@ func (c *SettingsCmd) InteractSetWvWWorld(s *discordgo.Session, event *discordgo
 
 	if event.GuildID == "" {
 		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-			Content: "This command can only be used in a server",
+			Content: resources.T("settings.errors.server_only"),
 		})
 		return
 	}
-	response := "disabled"
+	response := resources.T("settings.wvw_world.disabled")
 	ctx := context.Background()
 	if len(event.MessageComponentData().Values) == 0 {
 		// Disable
@@ -474,7 +478,7 @@ func (c *SettingsCmd) InteractSetWvWWorld(s *discordgo.Session, event *discordgo
 		worldIndex, err := strconv.Atoi(worldIndexStr)
 		if err != nil {
 			s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-				Content: "Invalid world index",
+				Content: resources.T("settings.errors.invalid_world_index"),
 			})
 			return
 		}
@@ -490,7 +494,7 @@ func (c *SettingsCmd) InteractSetWvWWorld(s *discordgo.Session, event *discordgo
 	}
 
 	_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-		Content: fmt.Sprintf("WvW world mapping updated to %s", response),
+		Content: resources.T("settings.wvw_world.updated", resources.TData("world", response)),
 	})
 	if err != nil {
 		onError(s, event, err)
@@ -528,7 +532,7 @@ func (c *SettingsCmd) InteractSetWorldRole(s *discordgo.Session, event *discordg
 		label = "Linked"
 	default:
 		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-			Content: "Invalid role setting",
+			Content: resources.T("settings.errors.invalid_role_setting"),
 		})
 		return
 	}
@@ -555,7 +559,7 @@ func (c *SettingsCmd) InteractSetWorldRole(s *discordgo.Session, event *discordg
 	}
 
 	_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-		Content: fmt.Sprintf("%s world role updated to <@&%s>", label, roleID),
+		Content: resources.T(fmt.Sprintf("settings.wvw_roles.%s_updated", strings.ToLower(label)), resources.TData("roleId", roleID)),
 	})
 	if err != nil {
 		onError(s, event, err)
@@ -596,7 +600,7 @@ func (c *SettingsCmd) InteractSetAssociatedRoles(s *discordgo.Session, event *di
 	}
 
 	_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-		Content: fmt.Sprintf("Associated wvw roles updated to <@&%s>", strings.Join(roleIDs, ">, <@&")),
+		Content: resources.T("settings.wvw_roles.associated_updated", resources.TData("roleIds", strings.Join(roleIDs, ">, <@&"))),
 	})
 	if err != nil {
 		onError(s, event, err)
@@ -607,7 +611,7 @@ func (c *SettingsCmd) InteractSetAssociatedRoles(s *discordgo.Session, event *di
 func (c *SettingsCmd) InteractSetAccRep(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 	if event.GuildID == "" {
 		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-			Content: "This command can only be used in a server",
+			Content: resources.T("settings.errors.server_only"),
 		})
 		return
 	}
@@ -641,7 +645,7 @@ func (c *SettingsCmd) InteractSetAccRep(s *discordgo.Session, event *discordgo.I
 func (c *SettingsCmd) InteractSetGuildTagRep(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 	if event.GuildID == "" {
 		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-			Content: "This command can only be used in a server",
+			Content: resources.T("settings.errors.server_only"),
 		})
 		return
 	}
@@ -675,7 +679,7 @@ func (c *SettingsCmd) InteractSetGuildTagRep(s *discordgo.Session, event *discor
 func (c *SettingsCmd) InteractSetEnforceGuildTagRep(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 	if event.GuildID == "" {
 		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-			Content: "This command can only be used in a server",
+			Content: resources.T("settings.errors.server_only"),
 		})
 		return
 	}
@@ -709,14 +713,14 @@ func (c *SettingsCmd) InteractSetEnforceGuildTagRep(s *discordgo.Session, event 
 func (c *SettingsCmd) InteractSetGuildCommonRole(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 	if event.GuildID == "" {
 		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-			Content: "This command can only be used in a server",
+			Content: resources.T("settings.errors.server_only"),
 		})
 		return
 	}
 
 	if len(event.MessageComponentData().Values) == 0 {
 		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-			Content: "Invalid role (empty)",
+			Content: resources.T("settings.errors.invalid_role_empty"),
 		})
 		return
 	}
@@ -753,7 +757,7 @@ func (c *SettingsCmd) InteractSetGuildCommonRole(s *discordgo.Session, event *di
 func (c *SettingsCmd) InteractSetGuildVerifyRoles(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 	if event.GuildID == "" {
 		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-			Content: "This command can only be used in a server",
+			Content: resources.T("settings.errors.server_only"),
 		})
 		return
 	}
@@ -806,7 +810,7 @@ func (c *SettingsCmd) InteractSetGuildVerifyRoles(s *discordgo.Session, event *d
 func (c *SettingsCmd) InteractSetRequiredAPIKeyPermissions(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 	if event.GuildID == "" {
 		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-			Content: "This command can only be used in a server",
+			Content: resources.T("settings.errors.server_only"),
 		})
 		return
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/vennekilde/gw2-alliance-bot/internal/guild"
 	"github.com/vennekilde/gw2-alliance-bot/internal/nick"
 	"github.com/vennekilde/gw2-alliance-bot/internal/world"
+	"github.com/vennekilde/gw2-alliance-bot/resources"
 	"go.uber.org/zap"
 )
 
@@ -49,8 +50,10 @@ func (c *RepCmd) Register(i *Interactions) {
 	// Represent
 	i.addCommand(&Command{
 		command: &discordgo.ApplicationCommand{
-			Name:        "rep",
-			Description: "Pick guild to represent",
+			Name:                     resources.T("cmd.rep.name"),
+			Description:              resources.T("cmd.rep.description"),
+			NameLocalizations:        resources.GetLocalizations("cmd.rep.name"),
+			DescriptionLocalizations: resources.GetLocalizations("cmd.rep.description"),
 		},
 		handler: c.onCommandRep,
 	})
@@ -58,8 +61,9 @@ func (c *RepCmd) Register(i *Interactions) {
 }
 func (c *RepCmd) onCommandRep(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 	ctx := context.Background()
+	locale := GetInteractionLocale(event)
 	if event.Member == nil {
-		onError(s, event, errors.New("this command can only be used inside a discord server channel"))
+		onError(s, event, errors.New(resources.TL(locale, "rep.errors.guild_only")))
 		return
 	}
 
@@ -76,7 +80,7 @@ func (c *RepCmd) onCommandRep(s *discordgo.Session, event *discordgo.Interaction
 	// We have the data, so might as well verify the roles, but ignore the error atm.
 	_ = c.wvw.VerifyWvWWorldRoles(event.GuildID, event.Member, resp.JSON200.Accounts, resp.JSON200.Bans)
 
-	c.handleRepFromStatus(s, event, user, resp.JSON200.Accounts)
+	c.handleRepFromStatus(s, event, user, resp.JSON200.Accounts, locale)
 }
 
 func (c *RepCmd) buildOverviewGuildComponents(guildID string, accounts []api.Account) (components []discordgo.MessageComponent, lastRole *discordgo.Role, err error) {
@@ -101,7 +105,7 @@ func (c *RepCmd) GetAllGuildsFromAccounts(accounts []api.Account) ([]*gw2api.Gui
 	for _, account := range accounts {
 		accGuilds, partial := c.guilds.GetGuildsInfo(account.Guilds)
 		if partial {
-			return nil, errors.New("unable to fetch all guilds, likely an issue with the GW2 API, try again later")
+			return nil, errors.New(resources.T("rep.errors.unable_to_fetch_guilds"))
 		}
 
 		// Add accGuilds to guilds, if they are not already there
@@ -163,7 +167,7 @@ func (c *RepCmd) buildAccRepSelectMenu(accounts []api.Account) []discordgo.Messa
 	}
 }
 
-func (c *RepCmd) handleRepFromStatus(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User, accounts []api.Account) {
+func (c *RepCmd) handleRepFromStatus(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User, accounts []api.Account, locale discordgo.Locale) {
 	components, lastRole, err := c.buildOverviewGuildComponents(event.GuildID, accounts)
 	if err != nil {
 		onError(s, event, err)
@@ -174,7 +178,7 @@ func (c *RepCmd) handleRepFromStatus(s *discordgo.Session, event *discordgo.Inte
 
 	// Just set role
 	if len(components) == 1 && enforceGuildRep {
-		c.setRoleByName(s, event, user, lastRole.Name)
+		c.setRoleByName(s, event, user, lastRole.Name, locale)
 	} else if len(components) == 0 {
 		// Only show if /rep was called directly
 		if event.Type == discordgo.InteractionApplicationCommand || event.Type == discordgo.InteractionApplicationCommandAutocomplete {
@@ -182,10 +186,8 @@ func (c *RepCmd) handleRepFromStatus(s *discordgo.Session, event *discordgo.Inte
 				Flags: discordgo.MessageFlagsEphemeral,
 				Embeds: []*discordgo.MessageEmbed{
 					{
-						Title: "Guild / Alliance Roles",
-						Description: `Found no guild or alliance role on this server applicable for your Guild Wars 2 account
-						
-									Contact the server management if you have any questions`,
+						Title:       resources.TL(locale, "rep.no_roles.title"),
+						Description: resources.TL(locale, "rep.no_roles.description"),
 						//Color:       0x3498DB, // blue
 					},
 				},
@@ -196,7 +198,7 @@ func (c *RepCmd) handleRepFromStatus(s *discordgo.Session, event *discordgo.Inte
 		}
 	} else {
 		_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-			Content: "Pick guild to represent",
+			Content: resources.TL(locale, "rep.content"),
 			Flags:   discordgo.MessageFlagsEphemeral,
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
@@ -219,7 +221,7 @@ func (c *RepCmd) handleRepFromStatus(s *discordgo.Session, event *discordgo.Inte
 		} else if len(accounts) > 1 {
 			_, err := s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
 				Flags:      discordgo.MessageFlagsEphemeral,
-				Content:    "Pick an account to represent on this server",
+				Content:    resources.TL(locale, "rep.account_rep.content"),
 				Components: c.buildAccRepSelectMenu(accounts),
 			})
 			if err != nil {
@@ -231,6 +233,7 @@ func (c *RepCmd) handleRepFromStatus(s *discordgo.Session, event *discordgo.Inte
 
 func (c *RepCmd) onSetRole(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
 	ctx := context.Background()
+	locale := GetInteractionLocale(event)
 
 	err := s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
@@ -266,25 +269,25 @@ func (c *RepCmd) onSetRole(s *discordgo.Session, event *discordgo.InteractionCre
 		}
 	}
 
-	onError(s, event, fmt.Errorf("unable to verify you are still elligble to represent the guild"))
+	onError(s, event, errors.New(resources.TL(locale, "rep.errors.unable_to_verify_eligible")))
 	return
 
 setRole:
 	guild, partial := c.guilds.GetGuildInfo(guildID)
 	if partial || guild == nil {
-		onError(s, event, errors.New("unable to fetch guild info, try again later"))
+		onError(s, event, errors.New(resources.TL(locale, "rep.errors.unable_to_fetch_guild_info")))
 		return
 	}
 
 	roleName := fmt.Sprintf("[%s] %s", guild.Tag, guild.Name)
 	// Set role
-	c.setRoleByName(s, event, user, roleName)
+	c.setRoleByName(s, event, user, roleName, locale)
 }
 
-func (c *RepCmd) setRoleByName(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User, roleName string) {
+func (c *RepCmd) setRoleByName(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User, roleName string, locale discordgo.Locale) {
 	role := c.cache.GetRoleByName(event.GuildID, roleName)
 	if role == nil {
-		onError(s, event, fmt.Errorf("unable to find role with name: %s", roleName))
+		onError(s, event, errors.New(resources.TL(locale, "rep.errors.unable_to_find_role", resources.TData("roleName", roleName))))
 		return
 	}
 
@@ -308,8 +311,8 @@ func (c *RepCmd) setRoleByName(s *discordgo.Session, event *discordgo.Interactio
 		Flags: discordgo.MessageFlagsEphemeral,
 		Embeds: []*discordgo.MessageEmbed{
 			{
-				Title:       fmt.Sprintf("Representing %s!", roleName),
-				Description: fmt.Sprintf("You have been granted the role: %s", roleName),
+				Title:       resources.TL(locale, "rep.success.title", resources.TData("roleName", roleName)),
+				Description: resources.TL(locale, "rep.success.description", resources.TData("roleName", roleName)),
 				Color:       0x57F287, // green
 			},
 		},
@@ -321,6 +324,7 @@ func (c *RepCmd) setRoleByName(s *discordgo.Session, event *discordgo.Interactio
 }
 
 func (c *RepCmd) InteractSetNickByAccount(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	locale := GetInteractionLocale(event)
 	if event.GuildID == "" {
 		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
 			Content: "This command can only be used in a server",
@@ -331,7 +335,7 @@ func (c *RepCmd) InteractSetNickByAccount(s *discordgo.Session, event *discordgo
 	parts := strings.Split(event.MessageComponentData().CustomID, ":")
 	if len(parts) != 2 {
 		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-			Content: "Invalid command",
+			Content: resources.TL(locale, "rep.errors.invalid_command"),
 		})
 		return
 	}
@@ -350,8 +354,8 @@ func (c *RepCmd) InteractSetNickByAccount(s *discordgo.Session, event *discordgo
 			Content:    event.Message.Content,
 			Embeds: []*discordgo.MessageEmbed{
 				{
-					Title:       "Account name updated",
-					Description: fmt.Sprintf("You nickname has been updated with account name: %s", accName),
+					Title:       resources.TL(locale, "rep.account_updated.title"),
+					Description: resources.TL(locale, "rep.account_updated.description", resources.TData("accountName", accName)),
 					Color:       0x57F287, // green
 				},
 			},

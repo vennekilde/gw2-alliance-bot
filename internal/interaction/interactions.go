@@ -1,11 +1,9 @@
 package interaction
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"strings"
-	"unicode"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
@@ -13,6 +11,7 @@ import (
 	"github.com/vennekilde/gw2-alliance-bot/internal/discord"
 	"github.com/vennekilde/gw2-alliance-bot/internal/guild"
 	"github.com/vennekilde/gw2-alliance-bot/internal/world"
+	"github.com/vennekilde/gw2-alliance-bot/resources"
 	"go.uber.org/zap"
 )
 
@@ -23,6 +22,18 @@ const (
 )
 
 type InteractionHandler func(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User)
+
+// GetInteractionLocale returns the locale from the interaction, defaulting to English if not available
+func GetInteractionLocale(event *discordgo.InteractionCreate) discordgo.Locale {
+	if event.Locale != "" {
+		return event.Locale
+	}
+	// Fallback to guild locale if available
+	if event.GuildLocale != nil && *event.GuildLocale != "" {
+		return *event.GuildLocale
+	}
+	return discordgo.EnglishUS
+}
 
 type Command struct {
 	command *discordgo.ApplicationCommand
@@ -123,8 +134,9 @@ func (c *Interactions) onCommand(s *discordgo.Session, event *discordgo.Interact
 				zap.Any("user", user.String()),
 				zap.Any("recover", r),
 			)
+			locale := GetInteractionLocale(event)
 			_, err := s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
-				Content: "Error while executing command",
+				Content: resources.TL(locale, "errors.command_execution"),
 			})
 			if err != nil {
 				zap.L().Error("unable to send error interaction response", zap.Error(err))
@@ -175,10 +187,11 @@ func (c *Interactions) onMessageComponent(s *discordgo.Session, event *discordgo
 				zap.Any("user", user.String()),
 				zap.Any("recover", r),
 			)
+			locale := GetInteractionLocale(event)
 			err := s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
 				Data: &discordgo.InteractionResponseData{
-					Content: "Error while handling interaction",
+					Content: resources.TL(locale, "errors.interaction_handling"),
 					Flags:   discordgo.MessageFlagsEphemeral,
 				},
 			})
@@ -229,9 +242,10 @@ func (c *Interactions) onModalSubmit(s *discordgo.Session, event *discordgo.Inte
 				zap.Any("user", user.String()),
 				zap.Any("recover", r),
 			)
+			locale := GetInteractionLocale(event)
 			_, err := s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
 				Flags:   discordgo.MessageFlagsEphemeral,
-				Content: "Error while processing data",
+				Content: resources.TL(locale, "errors.processing_data"),
 			})
 			if err != nil {
 				zap.L().Error("unable to send error interaction response", zap.Error(err))
@@ -247,7 +261,14 @@ func (c *Interactions) onModalSubmit(s *discordgo.Session, event *discordgo.Inte
 	if handler, ok := c.interactions[id]; ok {
 		handler(s, event, user)
 	} else {
-		onError(s, event, errors.New("unknown interaction type"))
+		locale := GetInteractionLocale(event)
+		_, err := s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
+			Content: resources.TL(locale, "errors.command_execution"),
+			Flags:   discordgo.MessageFlagsEphemeral,
+		})
+		if err != nil {
+			zap.L().Error("unable to send error interaction response", zap.Error(err))
+		}
 	}
 }
 
@@ -285,15 +306,14 @@ func determineUser(event *discordgo.InteractionCreate) *discordgo.User {
 	if event.Member != nil {
 		return event.Member.User
 	}
-	if event.Message != nil {
-		return event.Message.Author
-	}
 	return nil
 }
 
 func onError(s *discordgo.Session, event *discordgo.InteractionCreate, err error) {
-	zap.L().Error("error while executing command", zap.Error(err))
-
+	zap.L().Warn("error while handling interaction",
+		zap.Error(err),
+	)
+	locale := GetInteractionLocale(event)
 	errStr := err.Error()
 	/*if apiErr, ok := err.(goraml.APIError); ok {
 		if typedErr, ok := apiErr.Message.(*api.Error); ok {
@@ -305,13 +325,13 @@ func onError(s *discordgo.Session, event *discordgo.InteractionCreate, err error
 		Flags: discordgo.MessageFlagsEphemeral,
 		Embeds: []*discordgo.MessageEmbed{
 			{
-				Title:       "Error!",
-				Description: "There was a problem while processing your request",
+				Title:       resources.TL(locale, "errors.error_title"),
+				Description: resources.TL(locale, "errors.error_description"),
 				Color:       0xED4245, // Red
 				Fields: []*discordgo.MessageEmbedField{
 					{
-						Name:   "Message",
-						Value:  string(unicode.ToUpper(rune(errStr[0]))) + errStr[1:],
+						Name:   resources.TL(locale, "errors.message_field"),
+						Value:  errStr,
 						Inline: false,
 					},
 				},

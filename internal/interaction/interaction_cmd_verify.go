@@ -9,6 +9,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
+	"github.com/vennekilde/gw2-alliance-bot/resources"
 )
 
 var APIKeyErrorRegex = regexp.MustCompile(`(.*)(You need to name your api key ").*(" instead of.*)`)
@@ -45,8 +46,10 @@ func (c *VerifyCmd) Register(i *Interactions) {
 	// Verify
 	i.addCommand(&Command{
 		command: &discordgo.ApplicationCommand{
-			Name:        "verify",
-			Description: "Add one or more Gw2 API keys to your Discord account. You can link multiple Gw2 accounts.",
+			Name:                     resources.T("cmd.verify.name"),
+			Description:              resources.T("cmd.verify.description"),
+			NameLocalizations:        resources.GetLocalizations("cmd.verify.name"),
+			DescriptionLocalizations: resources.GetLocalizations("cmd.verify.description"),
 			// Disabled, as users kept using it wrong
 			/*Options: []*discordgo.ApplicationCommandOption{
 				{
@@ -57,6 +60,7 @@ func (c *VerifyCmd) Register(i *Interactions) {
 			},*/
 		},
 		handler: func(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+			locale := GetInteractionLocale(event)
 			if len(event.ApplicationCommandData().Options) > 0 {
 				apiKey := event.ApplicationCommandData().Options[0].StringValue()
 				c.setAPIKey(s, event, user, apiKey)
@@ -74,15 +78,15 @@ func (c *VerifyCmd) Register(i *Interactions) {
 
 			embeds := []*discordgo.MessageEmbed{
 				{
-					Title: "Instructions",
+					Title: resources.TL(locale, "verify.instructions.title"),
 					Fields: []*discordgo.MessageEmbedField{
 						{
-							Name:  `1. Click "Create API Key"`,
-							Value: fmt.Sprintf(tmplAPIKeyInstructions, apiKeyNamePrefix, code),
+							Name:  resources.TL(locale, "verify.instructions.step1.title"),
+							Value: resources.TL(locale, "verify.instructions.step1.content", resources.TData("apiKeyPrefix", apiKeyNamePrefix, "code", code)),
 						},
 						{
-							Name:  `2. Click "Set API Key"`,
-							Value: "Insert your newly created api key from step 1.",
+							Name:  resources.TL(locale, "verify.instructions.step2.title"),
+							Value: resources.TL(locale, "verify.instructions.step2.content"),
 						},
 					},
 					Image: &discordgo.MessageEmbedImage{
@@ -99,12 +103,12 @@ func (c *VerifyCmd) Register(i *Interactions) {
 						Components: []discordgo.MessageComponent{
 							discordgo.Button{
 								Style: discordgo.LinkButton,
-								Label: "Create API Key",
+								Label: resources.TL(locale, "verify.buttons.create_api_key"),
 								URL:   "https://account.arena.net/applications/create",
 							},
 							discordgo.Button{
 								Style:    discordgo.PrimaryButton,
-								Label:    "Set API Key",
+								Label:    resources.TL(locale, "verify.buttons.set_api_key"),
 								CustomID: InteractionIDModalAPIKey,
 							},
 						},
@@ -119,24 +123,25 @@ func (c *VerifyCmd) Register(i *Interactions) {
 }
 
 func (c *VerifyCmd) openAPIKeyModal(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	locale := GetInteractionLocale(event)
 	err := s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseModal,
 		Data: &discordgo.InteractionResponseData{
 			CustomID: InteractionIDSetAPIKey,
 			Flags:    discordgo.MessageFlagsEphemeral,
-			Title:    "Insert API Key",
-			Content:  "Create your api key at at https://account.arena.net/applications/create. Permissions: Characters, Progression & WvW",
+			Title:    resources.TL(locale, "verify.modal.title"),
+			Content:  resources.TL(locale, "verify.modal.content"),
 			Components: []discordgo.MessageComponent{
 				discordgo.ActionsRow{
 					Components: []discordgo.MessageComponent{
 						discordgo.TextInput{
 							Style:       discordgo.TextInputShort,
 							CustomID:    InteractionIDSetAPIKey,
-							Label:       "API Key",
+							Label:       resources.TL(locale, "verify.modal.label"),
 							MinLength:   72,
 							MaxLength:   72,
 							Required:    true,
-							Placeholder: "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXXXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX",
+							Placeholder: resources.TL(locale, "verify.modal.placeholder"),
 						},
 					},
 				},
@@ -154,6 +159,7 @@ func (c *VerifyCmd) setAPIKeyModal(s *discordgo.Session, event *discordgo.Intera
 }
 
 func (c *VerifyCmd) setAPIKey(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User, apiKey string) {
+	locale := GetInteractionLocale(event)
 	ctx := context.Background()
 	body := api.APIKeyData{
 		Apikey:  apiKey,
@@ -161,7 +167,7 @@ func (c *VerifyCmd) setAPIKey(s *discordgo.Session, event *discordgo.Interaction
 	}
 	resp, err := c.backend.PutPlatformUserAPIKeyWithResponse(ctx, backend.PlatformID, user.ID, nil, body)
 	if err != nil {
-		onError(s, event, fmt.Errorf("error while executing command"))
+		onError(s, event, errors.New(resources.TL(locale, "errors.command_execution")))
 		return
 	}
 
@@ -186,7 +192,7 @@ func (c *VerifyCmd) setAPIKey(s *discordgo.Session, event *discordgo.Interaction
 		onError(s, event, apiErr)
 		return
 	default:
-		onError(s, event, errors.New("unable to set api key - reason unknown"))
+		onError(s, event, errors.New(resources.TL(locale, "verify.errors.unable_to_set")))
 		return
 	}
 
@@ -194,11 +200,11 @@ func (c *VerifyCmd) setAPIKey(s *discordgo.Session, event *discordgo.Interaction
 		Flags: discordgo.MessageFlagsEphemeral,
 		Embeds: []*discordgo.MessageEmbed{
 			{
-				Title:       "Success!",
-				Description: "Your api key has been added to the system",
+				Title:       resources.TL(locale, "verify.success.title"),
+				Description: resources.TL(locale, "verify.success.description"),
 				Color:       0x57F287, // green
 				Footer: &discordgo.MessageEmbedFooter{
-					Text: "Checking if you are eligible to join a guild role...",
+					Text: resources.TL(locale, "verify.success.footer"),
 				},
 			},
 		},

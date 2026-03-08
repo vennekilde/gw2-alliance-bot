@@ -1,0 +1,152 @@
+# Command descriptions
+cmd:
+  verify:
+    name: "verify"
+    description: "Add one or more Gw2 API keys to your Discord account. You can link multiple Gw2 accounts."
+  status:
+    name: "status"
+    description: "Display your current verification status"
+  apikeys:
+    name: "apikeys"
+    description: "List of active API keys linked to your discord account"
+  refresh:
+    name: "refresh"
+    description: "Force the Discord bot to refresh your verification status with the verification server"
+  rep:
+    name: "rep"
+    description: "Pick guild to represent"
+  settings:
+    name: "settings"
+    description: "Modify settings for the Guild Wars 2 Alliance Bot"
+
+# Verify command
+verify:
+  instructions:
+    title: "Instructions"
+    step1:
+      title: "1. Click \"Create API Key\""
+      content: "Ensure the api key meets the following criteria:\n\n**Name your API key**\n`{{.apiKeyPrefix}}{{.code}}`\n\n**Permissions**\n- Characters\n- Progression\n- WvW\n(See the image below)"
+    step2:
+      title: "2. Click \"Set API Key\""
+      content: "Insert your newly created api key from step 1."
+  buttons:
+    create_api_key: "Create API Key"
+    set_api_key: "Set API Key"
+  modal:
+    title: "Insert API Key"
+    content: "Create your api key at at https://account.arena.net/applications/create. Permissions: Characters, Progression & WvW"
+    label: "API Key"
+    placeholder: "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXXXXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+  success:
+    title: "Success!"
+    description: "Your api key has been added to the system"
+    footer: "Checking if you are eligible to join a guild role..."
+  errors:
+    unable_to_set: "unable to set api key - reason unknown"
+
+# Status command
+status:
+  overview:
+    title: "Overview"
+    description: "Accounts linked with your discord user"
+  fields:
+    account: "Account"
+    world: "World"
+    wvw_team: "WvW Team"
+    wvw_guild: "WvW Guild"
+    status: "Status"
+    updated: "Updated"
+    guilds: "Guilds"
+    temporary_access: "Temporary Access"
+    world_temporary: "World (Temporary)"
+    expires: "Expires"
+  status_values:
+    active: "Active"
+    banned: "Banned"
+    temporary: "Temporary"
+    not_linked: "Not linked with Guild Wars 2 account!\nType /verify to link with your Guild Wars 2 account"
+    unassigned: "Unassigned"
+  temporary_access_description: "Worlds you have been granted a temporary access to"
+  expires_format:
+    days: "{{.days}} days"
+
+# API Keys command
+apikeys:
+  title: "API Key - {{.name}}"
+  fields:
+    account: "Account"
+    permissions: "Permissions"
+  footer: "Last synchronization"
+
+# Rep command
+rep:
+  content: "Pick guild to represent"
+  no_roles:
+    title: "Guild / Alliance Roles"
+    description: "Found no guild or alliance role on this server applicable for your Guild Wars 2 account\n\t\t\t\t\tContact the server management if you have any questions"
+  success:
+    title: "Representing {{.roleName}}!"
+    description: "You have been granted the role: {{.roleName}}"
+  account_rep:
+    content: "Pick an account to represent on this server"
+  account_updated:
+    title: "Account name updated"
+    description: "You nickname has been updated with account name: {{.accountName}}"
+  errors:
+    guild_only: "this command can only be used inside a discord server channel"
+    unable_to_verify_eligible: "unable to verify you are still elligble to represent the guild"
+    unable_to_fetch_guilds: "unable to fetch all guilds, likely an issue with the GW2 API, try again later"
+    unable_to_fetch_guild_info: "unable to fetch guild info, try again later"
+    unable_to_find_role: "unable to find role with name: {{.roleName}}"
+    invalid_command: "Invalid command"
+
+# Settings command
+settings:
+  wvw_world:
+    title: "WvW World Settings"
+    placeholder_eu: "Select a world from EU"
+    placeholder_eu_national: "Select a national world from EU"
+    placeholder_na: "Select a world from NA"
+    button_disable: "Disable"
+    updated: "WvW world mapping updated to {{.world}}"
+    disabled: "disabled"
+  wvw_roles:
+    title: "WvW World Roles"
+    primary_placeholder: "Select a role for primary world"
+    linked_placeholder: "Select a role for linked world"
+    associated_placeholder: "Select associated roles that will be removed if user is not in the primary or linked world"
+    primary_updated: "Primary world role updated to <@&{{.roleId}}>"
+    linked_updated: "Linked world role updated to <@&{{.roleId}}>"
+    associated_updated: "Associated wvw roles updated to <@&{{.roleIds}}>"
+  account_rep:
+    title: "Account rep will append the account name to a user's nickname"
+    button_enable: "Enable"
+    button_disable: "Disable"
+  guild_rep:
+    title: "Guild representation settings"
+    button_enable: "Prepend guild tag to nickname"
+    button_disable: "Disable prepend guild tag to nickname"
+    button_enforce_enable: "Enforce Guild Rep"
+    button_enforce_disable: "Disable Enforcement"
+  guild_verification:
+    title: "The common guild role will be added to all users that are also in a guild role"
+    common_role_placeholder: "Select a common guild role"
+    verify_roles_placeholder: "Select guilds that will be verified with the common role"
+    permissions_placeholder: "Select required API key permissions"
+  errors:
+    server_only: "This command can only be used in a server"
+    invalid_role_setting: "Invalid role setting"
+    invalid_world_index: "Invalid world index"
+    invalid_role_empty: "Invalid role (empty)"
+
+# General errors
+errors:
+  not_verified: "you are not verified"
+  unexpected_response: "unexpected response from the server"
+  command_execution: "error while executing command"
+  interaction_error: "Error while executing command"
+  interaction_handling: "Error while handling interaction"
+  processing_data: "Error while processing data"
+  error_title: "Error!"
+  error_description: "There was a problem while processing your request"
+  message_field: "Message"

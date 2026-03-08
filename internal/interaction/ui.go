@@ -10,6 +10,7 @@ import (
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 	"github.com/vennekilde/gw2-alliance-bot/internal/guild"
 	"github.com/vennekilde/gw2-alliance-bot/internal/world"
+	"github.com/vennekilde/gw2-alliance-bot/resources"
 )
 
 func authorFromInteraction(event *discordgo.InteractionCreate, member *discordgo.Member, memberID string) *discordgo.MessageEmbedAuthor {
@@ -33,17 +34,17 @@ type UIBuilder struct {
 	guilds *guild.Guilds
 }
 
-func (ui *UIBuilder) buildStatusFields(user *api.User) []*discordgo.MessageEmbedField {
-	fields := ui.buildAccountTableFields(user)
-	guildsField := ui.buildGuildsField(user.Accounts)
+func (ui *UIBuilder) buildStatusFields(user *api.User, locale discordgo.Locale) []*discordgo.MessageEmbedField {
+	fields := ui.buildAccountTableFields(user, locale)
+	guildsField := ui.buildGuildsField(user.Accounts, locale)
 	if guildsField != nil {
 		fields = append(fields, guildsField)
 	}
-	temporaryTableFields := ui.buildTemporaryAccessTableFields(user.EphemeralAssociations)
+	temporaryTableFields := ui.buildTemporaryAccessTableFields(user.EphemeralAssociations, locale)
 	if len(temporaryTableFields) > 0 {
 		fields = append(fields, &discordgo.MessageEmbedField{
-			Name:  "Temporary Access",
-			Value: "Worlds you have been granted a temporary access to",
+			Name:  resources.TL(locale, "status.fields.temporary_access"),
+			Value: resources.TL(locale, "status.temporary_access_description"),
 		})
 		fields = append(fields, temporaryTableFields...)
 	}
@@ -57,30 +58,30 @@ func (ui *UIBuilder) buildStatusFields(user *api.User) []*discordgo.MessageEmbed
 // --|--|--
 // Account.1234 | Far Shiverpeaks | Active
 // Account.4321 | Desolation      | Active
-func (ui *UIBuilder) buildAccountTableFields(user *api.User) []*discordgo.MessageEmbedField {
+func (ui *UIBuilder) buildAccountTableFields(user *api.User, locale discordgo.Locale) []*discordgo.MessageEmbedField {
 	var fields []*discordgo.MessageEmbedField
 
-	accColumn := ui.buildAccountNameColumnField(user.Accounts)
+	accColumn := ui.buildAccountNameColumnField(user.Accounts, locale)
 	fields = append(fields, accColumn)
 
-	//worldColumn := ui.buildWorldNameColumnField(user.Accounts)
+	//worldColumn := ui.buildWorldNameColumnField(user.Accounts, locale)
 	//fields = append(fields, worldColumn)
 
-	teamColumn := ui.buildTeamNameColumnField(user.Accounts)
+	teamColumn := ui.buildTeamNameColumnField(user.Accounts, locale)
 	fields = append(fields, teamColumn)
 
-	guildColumn := ui.buildWvWGuildNameColumnField(user.Accounts)
+	guildColumn := ui.buildWvWGuildNameColumnField(user.Accounts, locale)
 	fields = append(fields, guildColumn)
 
-	//statusColumn := ui.buildStatusColumnField(user.Accounts, user.Bans)
+	//statusColumn := ui.buildStatusColumnField(user.Accounts, user.Bans, locale)
 	//fields = append(fields, statusColumn)
 
 	return fields
 }
 
-func (ui *UIBuilder) buildAccountNameColumnField(accounts []api.Account) *discordgo.MessageEmbedField {
+func (ui *UIBuilder) buildAccountNameColumnField(accounts []api.Account, locale discordgo.Locale) *discordgo.MessageEmbedField {
 	field := &discordgo.MessageEmbedField{
-		Name:   "Account",
+		Name:   resources.TL(locale, "status.fields.account"),
 		Inline: true,
 	}
 
@@ -98,7 +99,7 @@ func (ui *UIBuilder) buildAccountNameColumnField(accounts []api.Account) *discor
 
 func (ui *UIBuilder) buildWorldNameColumnField(accounts []api.Account) *discordgo.MessageEmbedField {
 	field := &discordgo.MessageEmbedField{
-		Name:   "World",
+		Name:   resources.T("status.fields.world"),
 		Inline: true,
 	}
 
@@ -115,9 +116,9 @@ func (ui *UIBuilder) buildWorldNameColumnField(accounts []api.Account) *discordg
 	return field
 }
 
-func (ui *UIBuilder) buildTeamNameColumnField(accounts []api.Account) *discordgo.MessageEmbedField {
+func (ui *UIBuilder) buildTeamNameColumnField(accounts []api.Account, locale discordgo.Locale) *discordgo.MessageEmbedField {
 	field := &discordgo.MessageEmbedField{
-		Name:   "WvW Team",
+		Name:   resources.TL(locale, "status.fields.wvw_team"),
 		Inline: true,
 	}
 
@@ -125,7 +126,7 @@ func (ui *UIBuilder) buildTeamNameColumnField(accounts []api.Account) *discordgo
 		if account.ID != "" {
 			team, ok := world.TeamNames[account.WvWTeamID]
 			if !ok {
-				team = world.Team{Name: "Unassigned"}
+				team = world.Team{Name: resources.TL(locale, "status.status_values.unassigned")}
 			}
 			if field.Value == "" {
 				field.Value = team.Name
@@ -137,15 +138,15 @@ func (ui *UIBuilder) buildTeamNameColumnField(accounts []api.Account) *discordgo
 	return field
 }
 
-func (ui *UIBuilder) buildWvWGuildNameColumnField(accounts []api.Account) *discordgo.MessageEmbedField {
+func (ui *UIBuilder) buildWvWGuildNameColumnField(accounts []api.Account, locale discordgo.Locale) *discordgo.MessageEmbedField {
 	field := &discordgo.MessageEmbedField{
-		Name:   "WvW Guild",
+		Name:   resources.TL(locale, "status.fields.wvw_guild"),
 		Inline: true,
 	}
 
 	for _, account := range accounts {
 		if account.ID != "" {
-			wvwGuildName := "Unassigned"
+			wvwGuildName := resources.TL(locale, "status.status_values.unassigned")
 			if account.WvWGuildID != nil {
 				wvwGuild, _ := ui.guilds.GetGuildInfo(*account.WvWGuildID)
 				if wvwGuild != nil {
@@ -163,9 +164,9 @@ func (ui *UIBuilder) buildWvWGuildNameColumnField(accounts []api.Account) *disco
 	return field
 }
 
-func (ui *UIBuilder) buildStatusColumnField(accounts []api.Account, bans []api.Ban) *discordgo.MessageEmbedField {
+func (ui *UIBuilder) buildStatusColumnField(accounts []api.Account, bans []api.Ban, locale discordgo.Locale) *discordgo.MessageEmbedField {
 	field := &discordgo.MessageEmbedField{
-		Name:   "Status",
+		Name:   resources.TL(locale, "status.fields.status"),
 		Inline: true,
 	}
 
@@ -173,7 +174,7 @@ func (ui *UIBuilder) buildStatusColumnField(accounts []api.Account, bans []api.B
 
 	for _, account := range accounts {
 		if account.ID != "" {
-			statusStr := linkStatus(account.Expired, nil, activeBan != nil)
+			statusStr := linkStatus(account.Expired, nil, activeBan != nil, locale)
 			if field.Value == "" {
 				field.Value = statusStr
 			} else {
@@ -246,25 +247,25 @@ func (ui *UIBuilder) buildGuildNamesColumnFields(accounts []api.Account) (fields
 // --|--|--
 // Far Shiverpeaks | 2 days
 // Desolation      | 16 days
-func (ui *UIBuilder) buildTemporaryAccessTableFields(ephemeralAssocs []api.EphemeralAssociation) []*discordgo.MessageEmbedField {
+func (ui *UIBuilder) buildTemporaryAccessTableFields(ephemeralAssocs []api.EphemeralAssociation, locale discordgo.Locale) []*discordgo.MessageEmbedField {
 	var fields []*discordgo.MessageEmbedField
 
 	if len(ephemeralAssocs) == 0 {
 		return fields
 	}
 
-	accColumn := ui.buildTemporaryWorldNameColumnField(ephemeralAssocs)
+	accColumn := ui.buildTemporaryWorldNameColumnField(ephemeralAssocs, locale)
 	fields = append(fields, accColumn)
 
-	expiresColumn := ui.buildExpiresColumnField(ephemeralAssocs)
+	expiresColumn := ui.buildExpiresColumnField(ephemeralAssocs, locale)
 	fields = append(fields, expiresColumn)
 
 	return fields
 }
 
-func (ui *UIBuilder) buildTemporaryWorldNameColumnField(ephemeralAssocs []api.EphemeralAssociation) *discordgo.MessageEmbedField {
+func (ui *UIBuilder) buildTemporaryWorldNameColumnField(ephemeralAssocs []api.EphemeralAssociation, locale discordgo.Locale) *discordgo.MessageEmbedField {
 	field := &discordgo.MessageEmbedField{
-		Name:   "World (Temporary)",
+		Name:   resources.TL(locale, "status.fields.world_temporary"),
 		Inline: true,
 	}
 
@@ -281,15 +282,15 @@ func (ui *UIBuilder) buildTemporaryWorldNameColumnField(ephemeralAssocs []api.Ep
 	return field
 }
 
-func (ui *UIBuilder) buildExpiresColumnField(ephemeralAssocs []api.EphemeralAssociation) *discordgo.MessageEmbedField {
+func (ui *UIBuilder) buildExpiresColumnField(ephemeralAssocs []api.EphemeralAssociation, locale discordgo.Locale) *discordgo.MessageEmbedField {
 	field := &discordgo.MessageEmbedField{
-		Name:   "Expires",
+		Name:   resources.TL(locale, "status.fields.expires"),
 		Inline: true,
 	}
 
 	for _, ephemeralAssoc := range ephemeralAssocs {
 		if ephemeralAssoc.Until != nil && ephemeralAssoc.World != nil {
-			expires := ui.expiresLabel(*ephemeralAssoc.Until)
+			expires := ui.expiresLabel(*ephemeralAssoc.Until, locale)
 			if field.Value == "" {
 				field.Value = expires
 			} else {
@@ -300,9 +301,9 @@ func (ui *UIBuilder) buildExpiresColumnField(ephemeralAssocs []api.EphemeralAsso
 	return field
 }
 
-func (ui *UIBuilder) buildGuildsField(accounts []api.Account) *discordgo.MessageEmbedField {
+func (ui *UIBuilder) buildGuildsField(accounts []api.Account, locale discordgo.Locale) *discordgo.MessageEmbedField {
 	field := &discordgo.MessageEmbedField{
-		Name:   "Guilds",
+		Name:   resources.TL(locale, "status.fields.guilds"),
 		Inline: false,
 	}
 
@@ -338,7 +339,7 @@ func (ui *UIBuilder) buildGuildsField(accounts []api.Account) *discordgo.Message
 }
 
 // buildTokensTableEmbeds creates an embeds table of the associated account api tokens
-func (ui *UIBuilder) buildTokensTableEmbeds(user *api.User) []*discordgo.MessageEmbed {
+func (ui *UIBuilder) buildTokensTableEmbeds(user *api.User, locale discordgo.Locale) []*discordgo.MessageEmbed {
 	var embeds []*discordgo.MessageEmbed
 	// fields := ui.buildTokensTableFields(user.Accounts)
 	// embeds = append(embeds, &discordgo.MessageEmbed{
@@ -348,14 +349,14 @@ func (ui *UIBuilder) buildTokensTableEmbeds(user *api.User) []*discordgo.Message
 	// })
 	for _, account := range user.Accounts {
 		for _, token := range account.ApiKeys {
-			tokenFields := ui.buildTokenTableFields(account, token)
+			tokenFields := ui.buildTokenTableFields(account, token, locale)
 			embeds = append(embeds, &discordgo.MessageEmbed{
-				Title:     "API Key - " + token.Name + "",
+				Title:     resources.TL(locale, "apikeys.title", resources.TData("name", token.Name)),
 				Fields:    tokenFields,
 				Color:     0x3498DB, // blue
 				Timestamp: token.LastSuccess.Format(time.RFC3339),
 				Footer: &discordgo.MessageEmbedFooter{
-					Text: "Last synchronization",
+					Text: resources.TL(locale, "apikeys.footer"),
 				},
 			})
 		}
@@ -365,8 +366,8 @@ func (ui *UIBuilder) buildTokensTableEmbeds(user *api.User) []*discordgo.Message
 }
 
 // buildTokensTableFields creates an embed field table of the associated account api tokens
-func (ui *UIBuilder) buildTokenTableFields(acc api.Account, token api.TokenInfo) []*discordgo.MessageEmbedField {
-	return ui.buildTokenAccountNameColumnField(acc, token)
+func (ui *UIBuilder) buildTokenTableFields(acc api.Account, token api.TokenInfo, locale discordgo.Locale) []*discordgo.MessageEmbedField {
+	return ui.buildTokenAccountNameColumnField(acc, token, locale)
 }
 
 // buildTokensTableFields creates an embed field table of the associated account api tokens
@@ -385,15 +386,15 @@ func (ui *UIBuilder) buildTokensTableFields(accounts []api.Account) []*discordgo
 	return fields
 }
 
-func (ui *UIBuilder) buildTokenAccountNameColumnField(acc api.Account, token api.TokenInfo) []*discordgo.MessageEmbedField {
+func (ui *UIBuilder) buildTokenAccountNameColumnField(acc api.Account, token api.TokenInfo, locale discordgo.Locale) []*discordgo.MessageEmbedField {
 	fields := []*discordgo.MessageEmbedField{
 		{
-			Name:   "Account",
+			Name:   resources.TL(locale, "apikeys.fields.account"),
 			Inline: true,
 			Value:  acc.Name,
 		},
 		{
-			Name:   "Permissions",
+			Name:   resources.TL(locale, "apikeys.fields.permissions"),
 			Inline: false,
 			Value:  strings.Join(token.Permissions, ", "),
 		},
@@ -462,33 +463,33 @@ func (ui *UIBuilder) spacerField() *discordgo.MessageEmbedField {
 	}
 }
 
-func (ui *UIBuilder) expiresLabel(expires time.Time) (label string) {
+func (ui *UIBuilder) expiresLabel(expires time.Time, locale discordgo.Locale) (label string) {
 	until := time.Until(expires)
 	if until.Hours() > 24 {
-		label = fmt.Sprintf("%d days", int(until.Hours()/24))
+		label = resources.TL(locale, "status.expires_format.days", resources.TData("days", int(until.Hours()/24)))
 	} else {
 		label = until.String()
 	}
 	return label
 }
 
-func linkStatus(isExpired *bool, validUntil *time.Time, banned bool) string {
+func linkStatus(isExpired *bool, validUntil *time.Time, banned bool, locale discordgo.Locale) string {
 	if banned {
-		return "Banned"
+		return resources.TL(locale, "status.status_values.banned")
 	}
 
 	valid := true
 	if validUntil != nil {
 		valid := validUntil.Before(time.Now())
 		if valid {
-			return "Temporary"
+			return resources.TL(locale, "status.status_values.temporary")
 		}
 	}
 	if (isExpired != nil && *isExpired) || !valid {
-		return "Not linked with Guild Wars 2 account!\nType /verify to link with your Guild Wars 2 account"
+		return resources.TL(locale, "status.status_values.not_linked")
 	}
 
-	return "Active"
+	return resources.TL(locale, "status.status_values.active")
 }
 
 func linkStatusColor(isExpired *bool, validUntil *time.Time, banned bool, good int, bad int, neutral int) int {

@@ -8,6 +8,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/vennekilde/gw2-alliance-bot/internal/api"
 	"github.com/vennekilde/gw2-alliance-bot/internal/backend"
+	"github.com/vennekilde/gw2-alliance-bot/resources"
 )
 
 type APIKeysCmd struct {
@@ -26,8 +27,10 @@ func (c *APIKeysCmd) Register(i *Interactions) {
 	// Status cmd
 	i.addCommand(&Command{
 		command: &discordgo.ApplicationCommand{
-			Name:        "apikeys",
-			Description: "List of active API keys linked to your discord account",
+			Name:                     resources.T("cmd.apikeys.name"),
+			Description:              resources.T("cmd.apikeys.description"),
+			NameLocalizations:        resources.GetLocalizations("cmd.apikeys.name"),
+			DescriptionLocalizations: resources.GetLocalizations("cmd.apikeys.description"),
 		},
 		handler: c.onCommandAPIKeys,
 	})
@@ -49,6 +52,7 @@ func (c *APIKeysCmd) Register(i *Interactions) {
 }
 
 func (c *APIKeysCmd) onCommandAPIKeys(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	locale := GetInteractionLocale(event)
 	members := resolveMembersFromApplicationCommandData(event)
 	for memberID, member := range members {
 		ctx := context.Background()
@@ -57,10 +61,10 @@ func (c *APIKeysCmd) onCommandAPIKeys(s *discordgo.Session, event *discordgo.Int
 			onError(s, event, err)
 			return
 		} else if resp.StatusCode() == http.StatusNotFound {
-			onError(s, event, errors.New("you are not verified"))
+			onError(s, event, errors.New(resources.TL(locale, "errors.not_verified")))
 			return
 		} else if resp.JSON200 == nil {
-			onError(s, event, errors.New("unexpected response from the server"))
+			onError(s, event, errors.New(resources.TL(locale, "errors.unexpected_response")))
 			return
 		}
 
@@ -70,7 +74,8 @@ func (c *APIKeysCmd) onCommandAPIKeys(s *discordgo.Session, event *discordgo.Int
 }
 
 func (c *APIKeysCmd) sendFollowupAPIKeysMessage(s *discordgo.Session, event *discordgo.InteractionCreate, memberID string, member *discordgo.Member, user *api.User) {
-	embeds := c.ui.buildTokensTableEmbeds(user)
+	locale := GetInteractionLocale(event)
+	embeds := c.ui.buildTokensTableEmbeds(user, locale)
 	_, err := s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
 		Flags:  discordgo.MessageFlagsEphemeral,
 		Embeds: embeds,
