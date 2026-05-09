@@ -376,36 +376,20 @@ func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, curren
 		}
 	}
 
-	guildsRoles := c.guilds.GetGuildRolesFrom(roles)
-	guildRolesOptions := make([]discordgo.SelectMenuOption, 0, len(guildsRoles))
-	for _, guild := range guildsRoles {
-		option := discordgo.SelectMenuOption{
-			Label: guild.Name,
-			Value: guild.ID,
-		}
-		for _, roleID := range currentGuildVerifyRoles {
-			if roleID == guild.ID {
-				option.Default = true
-				break
-			}
-		}
-		guildRolesOptions = append(guildRolesOptions, option)
-	}
-
 	guildRolesSelect := discordgo.SelectMenu{
-		MenuType:    discordgo.StringSelectMenu,
+		MenuType:    discordgo.RoleSelectMenu,
 		CustomID:    InteractionIDSettingsSetGuildVerifyRoles,
 		Placeholder: resources.T("settings.guild_verification.verify_roles_placeholder"),
 		MinValues:   &zero,
-		MaxValues:   len(guildRolesOptions),
-		Options:     guildRolesOptions,
+		MaxValues:   25,
 	}
 
 	if len(currentGuildVerifyRoles) > 0 {
 		guildRolesSelect.DefaultValues = make([]discordgo.SelectMenuDefaultValue, len(currentGuildVerifyRoles))
 		for i, roleID := range currentGuildVerifyRoles {
 			guildRolesSelect.DefaultValues[i] = discordgo.SelectMenuDefaultValue{
-				ID: roleID,
+				Type: discordgo.SelectMenuDefaultValueRole,
+				ID:   roleID,
 			}
 		}
 	}
@@ -435,29 +419,22 @@ func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, curren
 		Options:     permissionsOptions,
 	}
 
-	// Roles to remove when not in in the verified guild
-	guildRolesToRemoveOptions := make([]discordgo.SelectMenuOption, 0, len(roles))
-	for _, role := range roles {
-		option := discordgo.SelectMenuOption{
-			Label: role.Name,
-			Value: role.ID,
-		}
-		for _, roleID := range currentGuildRolesToRemove {
-			if roleID == role.ID {
-				option.Default = true
-				break
-			}
-		}
-		guildRolesToRemoveOptions = append(guildRolesToRemoveOptions, option)
-	}
-
 	guildRolesToRemoveSelect := discordgo.SelectMenu{
-		MenuType:    discordgo.StringSelectMenu,
+		MenuType:    discordgo.RoleSelectMenu,
 		CustomID:    InteractionIDSettingsSetRolesToRemoveWhenNotInGuild,
 		Placeholder: resources.T("settings.guild_verification.roles_to_remove_placeholder"),
 		MinValues:   &zero,
-		MaxValues:   len(guildRolesToRemoveOptions),
-		Options:     guildRolesToRemoveOptions,
+		MaxValues:   25,
+	}
+
+	if len(currentGuildRolesToRemove) > 0 {
+		guildRolesToRemoveSelect.DefaultValues = make([]discordgo.SelectMenuDefaultValue, len(currentGuildRolesToRemove))
+		for i, roleID := range currentGuildRolesToRemove {
+			guildRolesToRemoveSelect.DefaultValues[i] = discordgo.SelectMenuDefaultValue{
+				Type: discordgo.SelectMenuDefaultValueRole,
+				ID:   roleID,
+			}
+		}
 	}
 
 	return []discordgo.MessageComponent{
@@ -793,41 +770,55 @@ func (c *SettingsCmd) InteractSetGuildVerifyRoles(s *discordgo.Session, event *d
 		return
 	}
 
-	roleIds := event.MessageComponentData().Values
-	rolesStr := strings.Join(roleIds, ",")
+	selectedRoleIDs := event.MessageComponentData().Values
+	roles, err := s.GuildRoles(event.GuildID)
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+
+	rolesByID := make(map[string]*discordgo.Role, len(roles))
+	for _, role := range roles {
+		rolesByID[role.ID] = role
+	}
+
+	validatedRoleIDs := make([]string, 0, len(selectedRoleIDs))
+	rejectedRoles := make([]string, 0)
+	for _, roleID := range selectedRoleIDs {
+		role, ok := rolesByID[roleID]
+		if !ok || !guild.RegexRoleNameMatcher.MatchString(role.Name) {
+			rejectedRoles = append(rejectedRoles, fmt.Sprintf("<@&%s>", roleID))
+			continue
+		}
+		validatedRoleIDs = append(validatedRoleIDs, roleID)
+	}
+
+	rolesStr := strings.Join(validatedRoleIDs, ",")
 	ctx := context.Background()
-	err := c.service.SetSetting(ctx, event.GuildID, backend.SettingGuildVerifyRoles, rolesStr)
+	err = c.service.SetSetting(ctx, event.GuildID, backend.SettingGuildVerifyRoles, rolesStr)
 	if err != nil {
 		onError(s, event, err)
 		return
 	}
 
 	menu := event.Message.Components[1].(*discordgo.ActionsRow).Components[0].(*discordgo.SelectMenu)
-	menu.Options = []discordgo.SelectMenuOption{}
-	roles, err := s.GuildRoles(event.GuildID)
-	if err != nil {
-		onError(s, event, err)
-		return
+	menu.DefaultValues = make([]discordgo.SelectMenuDefaultValue, len(validatedRoleIDs))
+	for i, roleID := range validatedRoleIDs {
+		menu.DefaultValues[i] = discordgo.SelectMenuDefaultValue{
+			Type: discordgo.SelectMenuDefaultValueRole,
+			ID:   roleID,
+		}
 	}
-	guildRoles := c.guilds.GetGuildRolesFrom(roles)
-	for _, guild := range guildRoles {
-		option := discordgo.SelectMenuOption{
-			Label: guild.Name,
-			Value: guild.ID,
-		}
-		for _, roleID := range roleIds {
-			if roleID == guild.ID {
-				option.Default = true
-				break
-			}
-		}
-		menu.Options = append(menu.Options, option)
+
+	content := event.Message.Content
+	if len(rejectedRoles) > 0 {
+		content = fmt.Sprintf("%s\n\nIgnored roles that do not match guild naming convention ([TAG] Name): %s", event.Message.Content, strings.Join(rejectedRoles, ", "))
 	}
 
 	err = s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
 		Data: &discordgo.InteractionResponseData{
-			Content:    event.Message.Content,
+			Content:    content,
 			Flags:      discordgo.MessageFlagsEphemeral,
 			Components: event.Message.Components,
 		},
@@ -856,24 +847,12 @@ func (c *SettingsCmd) InteractSetRolesToRemoveWhenNotInGuild(s *discordgo.Sessio
 	}
 
 	menu := event.Message.Components[3].(*discordgo.ActionsRow).Components[0].(*discordgo.SelectMenu)
-	menu.Options = []discordgo.SelectMenuOption{}
-	roles, err := s.GuildRoles(event.GuildID)
-	if err != nil {
-		onError(s, event, err)
-		return
-	}
-	for _, role := range roles {
-		option := discordgo.SelectMenuOption{
-			Label: role.Name,
-			Value: role.ID,
+	menu.DefaultValues = make([]discordgo.SelectMenuDefaultValue, len(roleIds))
+	for i, roleID := range roleIds {
+		menu.DefaultValues[i] = discordgo.SelectMenuDefaultValue{
+			Type: discordgo.SelectMenuDefaultValueRole,
+			ID:   roleID,
 		}
-		for _, roleID := range roleIds {
-			if roleID == role.ID {
-				option.Default = true
-				break
-			}
-		}
-		menu.Options = append(menu.Options, option)
 	}
 	err = s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
