@@ -133,6 +133,7 @@ settings:
     common_role_placeholder: "Selecciona un rol de gremio común"
     verify_roles_placeholder: "Selecciona gremios que serán verificados con el rol común"
     permissions_placeholder: "Selecciona permisos requeridos para la clave API"
+    roles_to_remove_placeholder: "Selecciona roles que serán eliminados si el usuario no está en ninguno de los gremios seleccionados"
   errors:
     server_only: "Este comando solo puede usarse en un servidor"
     invalid_role_setting: "Configuración de rol inválida"

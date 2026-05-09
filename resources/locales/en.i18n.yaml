@@ -133,6 +133,7 @@ settings:
     common_role_placeholder: "Select a common guild role"
     verify_roles_placeholder: "Select guilds that will be verified with the common role"
     permissions_placeholder: "Select required API key permissions"
+    roles_to_remove_placeholder: "Select roles that will be removed if the user is not in any of the selected guilds"
   errors:
     server_only: "This command can only be used in a server"
     invalid_role_setting: "Invalid role setting"

@@ -43,22 +43,23 @@ var Permissions = []string{
 }
 
 const (
-	InteractionIDSettingsSetWvWWorldDisable           = "setting-set-wvw-world-disable"
-	InteractionIDSettingsSetWvWWorldEU                = "setting-set-wvw-world-eu"
-	InteractionIDSettingsSetWvWWorldEUNational        = "setting-set-wvw-world-eu-national"
-	InteractionIDSettingsSetWvWWorldNA                = "setting-set-wvw-world-na"
-	InteractionIDSettingsSetPrimaryWorldRole          = "setting-set-prmary-world-role"
-	InteractionIDSettingsSetLinkedWorldRole           = "setting-set-linked-world-role"
-	InteractionIDSettingsSetWvWAssociatedRoles        = "setting-set-wvw-associated-roles"
-	InteractionIDSettingsSetAccRepEnable              = "setting-set-acc-rep-enable"
-	InteractionIDSettingsSetAccRepDisable             = "setting-set-acc-rep-disable"
-	InteractionIDSettingsSetGuildTagRepEnable         = "setting-set-guild-tag-rep-enable"
-	InteractionIDSettingsSetGuildTagRepDisable        = "setting-set-guild-tag-rep-disable"
-	InteractionIDSettingsSetEnforceGuildTagRepEnable  = "setting-set-enforce-guild-tag-rep-enable"
-	InteractionIDSettingsSetEnforceGuildTagRepDisable = "setting-set-enforce-guild-tag-rep-disable"
-	InteractionIDSettingsSetGuildCommonRole           = "setting-set-guild-common-role"
-	InteractionIDSettingsSetGuildVerifyRoles          = "setting-set-guild-verify-roles"
-	InteractionIDSettingsSetAPIKeyPermissions         = "setting-set-api-key-permissions"
+	InteractionIDSettingsSetWvWWorldDisable             = "setting-set-wvw-world-disable"
+	InteractionIDSettingsSetWvWWorldEU                  = "setting-set-wvw-world-eu"
+	InteractionIDSettingsSetWvWWorldEUNational          = "setting-set-wvw-world-eu-national"
+	InteractionIDSettingsSetWvWWorldNA                  = "setting-set-wvw-world-na"
+	InteractionIDSettingsSetPrimaryWorldRole            = "setting-set-prmary-world-role"
+	InteractionIDSettingsSetLinkedWorldRole             = "setting-set-linked-world-role"
+	InteractionIDSettingsSetWvWAssociatedRoles          = "setting-set-wvw-associated-roles"
+	InteractionIDSettingsSetAccRepEnable                = "setting-set-acc-rep-enable"
+	InteractionIDSettingsSetAccRepDisable               = "setting-set-acc-rep-disable"
+	InteractionIDSettingsSetGuildTagRepEnable           = "setting-set-guild-tag-rep-enable"
+	InteractionIDSettingsSetGuildTagRepDisable          = "setting-set-guild-tag-rep-disable"
+	InteractionIDSettingsSetEnforceGuildTagRepEnable    = "setting-set-enforce-guild-tag-rep-enable"
+	InteractionIDSettingsSetEnforceGuildTagRepDisable   = "setting-set-enforce-guild-tag-rep-disable"
+	InteractionIDSettingsSetGuildCommonRole             = "setting-set-guild-common-role"
+	InteractionIDSettingsSetGuildVerifyRoles            = "setting-set-guild-verify-roles"
+	InteractionIDSettingsSetRolesToRemoveWhenNotInGuild = "setting-set-roles-to-remove-when-not-in-guild"
+	InteractionIDSettingsSetAPIKeyPermissions           = "setting-set-api-key-permissions"
 )
 
 type SettingsCmd struct {
@@ -89,6 +90,7 @@ func (c *SettingsCmd) Register(i *Interactions) {
 	i.interactions[InteractionIDSettingsSetEnforceGuildTagRepDisable] = c.InteractSetEnforceGuildTagRep
 	i.interactions[InteractionIDSettingsSetGuildCommonRole] = c.InteractSetGuildCommonRole
 	i.interactions[InteractionIDSettingsSetGuildVerifyRoles] = c.InteractSetGuildVerifyRoles
+	i.interactions[InteractionIDSettingsSetRolesToRemoveWhenNotInGuild] = c.InteractSetRolesToRemoveWhenNotInGuild
 	i.interactions[InteractionIDSettingsSetAPIKeyPermissions] = c.InteractSetRequiredAPIKeyPermissions
 
 	var permission int64 = discordgo.PermissionAdministrator
@@ -156,12 +158,13 @@ func (c *SettingsCmd) Register(i *Interactions) {
 			currentCommonGuildRole := c.service.GetSetting(event.GuildID, backend.SettingGuildCommonRole)
 			currentRequiredPermissions := c.service.GetSettingSlice(event.GuildID, backend.SettingGuildRequiredPermissions)
 			currentGuildVerifyRoles := c.service.GetSettingSlice(event.GuildID, backend.SettingGuildVerifyRoles)
+			currentGuildRolesToRemove := c.service.GetSettingSlice(event.GuildID, backend.SettingRolesToRemoveWhenNotInGuild)
 			roles, err := s.GuildRoles(event.GuildID)
 			if err != nil {
 				onError(s, event, err)
 			}
 
-			guildCommonRoleComponents := c.buildGuildVerificationMenu(roles, currentCommonGuildRole, currentGuildVerifyRoles, currentRequiredPermissions)
+			guildCommonRoleComponents := c.buildGuildVerificationMenu(roles, currentCommonGuildRole, currentGuildVerifyRoles, currentGuildRolesToRemove, currentRequiredPermissions)
 			_, err = s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
 				Content:    resources.TL(locale, "settings.guild_verification.title"),
 				Flags:      discordgo.MessageFlagsEphemeral,
@@ -356,7 +359,7 @@ func (c *SettingsCmd) buildGuildTagRepToggle(guildID string) []discordgo.Message
 	}
 }
 
-func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, currentCommonGuildRole string, currentGuildVerifyRoles []string, currentAPIKeyPermissions []string) []discordgo.MessageComponent {
+func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, currentCommonGuildRole string, currentGuildVerifyRoles []string, currentGuildRolesToRemove []string, currentAPIKeyPermissions []string) []discordgo.MessageComponent {
 	zero := 0
 	rolesSelect := discordgo.SelectMenu{
 		MenuType:    discordgo.RoleSelectMenu,
@@ -432,6 +435,31 @@ func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, curren
 		Options:     permissionsOptions,
 	}
 
+	// Roles to remove when not in in the verified guild
+	guildRolesToRemoveOptions := make([]discordgo.SelectMenuOption, 0, len(roles))
+	for _, role := range roles {
+		option := discordgo.SelectMenuOption{
+			Label: role.Name,
+			Value: role.ID,
+		}
+		for _, roleID := range currentGuildRolesToRemove {
+			if roleID == role.ID {
+				option.Default = true
+				break
+			}
+		}
+		guildRolesToRemoveOptions = append(guildRolesToRemoveOptions, option)
+	}
+
+	guildRolesToRemoveSelect := discordgo.SelectMenu{
+		MenuType:    discordgo.StringSelectMenu,
+		CustomID:    InteractionIDSettingsSetRolesToRemoveWhenNotInGuild,
+		Placeholder: resources.T("settings.guild_verification.roles_to_remove_placeholder"),
+		MinValues:   &zero,
+		MaxValues:   len(guildRolesToRemoveOptions),
+		Options:     guildRolesToRemoveOptions,
+	}
+
 	return []discordgo.MessageComponent{
 		discordgo.ActionsRow{
 			Components: []discordgo.MessageComponent{rolesSelect},
@@ -441,6 +469,9 @@ func (c *SettingsCmd) buildGuildVerificationMenu(roles []*discordgo.Role, curren
 		},
 		discordgo.ActionsRow{
 			Components: []discordgo.MessageComponent{requiredAPIKeyPermissionsSelect},
+		},
+		discordgo.ActionsRow{
+			Components: []discordgo.MessageComponent{guildRolesToRemoveSelect},
 		},
 	}
 }
@@ -793,6 +824,57 @@ func (c *SettingsCmd) InteractSetGuildVerifyRoles(s *discordgo.Session, event *d
 		menu.Options = append(menu.Options, option)
 	}
 
+	err = s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseUpdateMessage,
+		Data: &discordgo.InteractionResponseData{
+			Content:    event.Message.Content,
+			Flags:      discordgo.MessageFlagsEphemeral,
+			Components: event.Message.Components,
+		},
+	})
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+}
+
+func (c *SettingsCmd) InteractSetRolesToRemoveWhenNotInGuild(s *discordgo.Session, event *discordgo.InteractionCreate, user *discordgo.User) {
+	if event.GuildID == "" {
+		s.FollowupMessageCreate(event.Interaction, false, &discordgo.WebhookParams{
+			Content: resources.T("settings.errors.server_only"),
+		})
+		return
+	}
+
+	roleIds := event.MessageComponentData().Values
+	rolesStr := strings.Join(roleIds, ",")
+	ctx := context.Background()
+	err := c.service.SetSetting(ctx, event.GuildID, backend.SettingRolesToRemoveWhenNotInGuild, rolesStr)
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+
+	menu := event.Message.Components[3].(*discordgo.ActionsRow).Components[0].(*discordgo.SelectMenu)
+	menu.Options = []discordgo.SelectMenuOption{}
+	roles, err := s.GuildRoles(event.GuildID)
+	if err != nil {
+		onError(s, event, err)
+		return
+	}
+	for _, role := range roles {
+		option := discordgo.SelectMenuOption{
+			Label: role.Name,
+			Value: role.ID,
+		}
+		for _, roleID := range roleIds {
+			if roleID == role.ID {
+				option.Default = true
+				break
+			}
+		}
+		menu.Options = append(menu.Options, option)
+	}
 	err = s.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseUpdateMessage,
 		Data: &discordgo.InteractionResponseData{

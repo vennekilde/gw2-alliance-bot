@@ -133,6 +133,7 @@ settings:
     common_role_placeholder: "Wähle eine gemeinsame Gildenrolle"
     verify_roles_placeholder: "Wähle Gilden aus, die mit der gemeinsamen Rolle verifiziert werden"
     permissions_placeholder: "Wähle erforderliche API-Schlüssel-Berechtigungen"
+    roles_to_remove_placeholder: "Wähle Rollen aus, die entfernt werden, wenn der Benutzer nicht in einer der ausgewählten Gilden ist"
   errors:
     server_only: "Dieser Befehl kann nur auf einem Server verwendet werden"
     invalid_role_setting: "Ungültige Rolleneinstellung"

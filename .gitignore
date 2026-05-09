@@ -19,3 +19,5 @@ dev.env
 bin/
 
 img
+
+cmd/gw2-alliance-bot/__debug_bin*

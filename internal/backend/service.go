@@ -15,16 +15,17 @@ import (
 const PlatformID = 2
 
 const (
-	SettingWvWWorld                 = "wvw_world"
-	SettingPrimaryRole              = "wvw_primary_role"
-	SettingLinkedRole               = "wvw_linked_role"
-	SettingAssociatedRoles          = "wvw_associated_roles"
-	SettingAccRepEnabled            = "acc_rep_nick"
-	SettingGuildTagRepEnabled       = "guild_tag_rep_nick"
-	SettingEnforceGuildRep          = "enforce_guild_rep"
-	SettingGuildCommonRole          = "verification_role"
-	SettingGuildVerifyRoles         = "guild_verify_roles"
-	SettingGuildRequiredPermissions = "guild_required_permissions"
+	SettingWvWWorld                    = "wvw_world"
+	SettingPrimaryRole                 = "wvw_primary_role"
+	SettingLinkedRole                  = "wvw_linked_role"
+	SettingAssociatedRoles             = "wvw_associated_roles"
+	SettingAccRepEnabled               = "acc_rep_nick"
+	SettingGuildTagRepEnabled          = "guild_tag_rep_nick"
+	SettingEnforceGuildRep             = "enforce_guild_rep"
+	SettingGuildCommonRole             = "verification_role"
+	SettingGuildVerifyRoles            = "guild_verify_roles"
+	SettingGuildRequiredPermissions    = "guild_required_permissions"
+	SettingRolesToRemoveWhenNotInGuild = "roles_to_remove_when_not_in_guild"
 )
 
 type Service struct {

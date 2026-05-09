@@ -133,6 +133,7 @@ settings:
     common_role_placeholder: "Sélectionne un rôle de guilde commun"
     verify_roles_placeholder: "Sélectionne les guildes qui seront vérifiées avec le rôle commun"
     permissions_placeholder: "Sélectionne les permissions requises pour la clé API"
+    roles_to_remove_placeholder: "Sélectionne les rôles qui seront supprimés si l'utilisateur n'est dans aucune des guildes sélectionnées"
   errors:
     server_only: "Cette commande ne peut être utilisée que sur un serveur"
     invalid_role_setting: "Paramètre de rôle invalide"

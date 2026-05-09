@@ -266,6 +266,9 @@ func (g *GuildRoleHandler) CheckRoles(guildID string, member *discordgo.Member, 
 			if err != nil {
 				zap.L().Warn("unable to remove role from member", zap.Any("role", verificationRole), zap.Any("member", member), zap.Error(err))
 			}
+
+			// Remove additional associated roles, if the setting is enabled
+			g.RemoveAssociatedRolesIfNeeded(guildID, member.User.ID)
 		} else if isVerified && !hasVerifiedRole {
 			// Add verified role, if user is verified, but does not have it
 			err := g.discord.GuildMemberRoleAdd(guildID, member.User.ID, verificationRole)
@@ -352,6 +355,16 @@ func (g *GuildRoleHandler) SetGuildRole(guildID string, userID string, roleID st
 	}
 
 	return nil
+}
+
+func (g *GuildRoleHandler) RemoveAssociatedRolesIfNeeded(guildID string, userID string) {
+	rolesToRemove := g.service.GetSettingSlice(guildID, backend.SettingRolesToRemoveWhenNotInGuild)
+	for _, roleID := range rolesToRemove {
+		err := g.discord.GuildMemberRoleRemove(guildID, userID, roleID)
+		if err != nil {
+			zap.L().Warn("unable to remove associated role from member", zap.String("guildID", guildID), zap.String("userID", userID), zap.String("roleID", roleID), zap.Error(err))
+		}
+	}
 }
 
 type Guilds struct {
